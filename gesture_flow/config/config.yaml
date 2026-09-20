@@ -1,0 +1,104 @@
+# GestureFlow Configuration File
+# Customize shortcuts, sensitivities, and behaviors
+
+camera:
+  device_index: 0
+  width: 640
+  height: 480
+  fps: 60
+  mirror: true              # Natural mirror preview
+
+engine:
+  min_detection_confidence: 0.6
+  min_tracking_confidence: 0.6
+  model_complexity: 0       # 0: Lite (fastest/least CPU), 1: Full
+  swipe_min_displacement: 0.07
+  swipe_max_duration: 0.35
+  swipe_direction_ratio: 1.4
+  swipe_cooldown_sec: 0.35
+  gesture_hold_sec: 0.45
+
+# Shortcut Mappings for Gestures
+gestures:
+  # 2-Finger Gestures (✌️ Index + Middle extended)
+  two_finger_swipe_right:
+    action: "next_tab"
+    label: "Next Tab"
+    keys: ["cmd", "alt", "right"]
+
+  two_finger_swipe_left:
+    action: "prev_tab"
+    label: "Previous Tab"
+    keys: ["cmd", "alt", "left"]
+
+  two_finger_swipe_down:
+    action: "minimize_window"
+    label: "Minimize Window"
+    keys: ["cmd", "m"]
+
+  two_finger_swipe_up:
+    action: "fullscreen_toggle"
+    label: "Toggle Fullscreen"
+    keys: ["cmd", "ctrl", "f"]
+
+  two_finger_pinch:
+    action: "close_tab"
+    label: "Close Tab"
+    keys: ["cmd", "w"]
+
+  # Full Hand Swipes (🖐 4-5 fingers extended)
+  open_hand_swipe_right:
+    action: "switch_desktop_right"
+    label: "Desktop Right"
+    keys: ["ctrl", "right"]
+
+  open_hand_swipe_left:
+    action: "switch_desktop_left"
+    label: "Desktop Left"
+    keys: ["ctrl", "left"]
+
+  open_hand_swipe_up:
+    action: "mission_control"
+    label: "Mission Control"
+    keys: ["ctrl", "up"]
+
+  open_hand_swipe_down:
+    action: "app_expose"
+    label: "App Exposé"
+    keys: ["ctrl", "down"]
+
+  # Static Hand Poses
+  open_palm_hold:
+    action: "play_pause"
+    label: "Play / Pause Music"
+    type: "media_key"
+
+  fist_hold:
+    action: "show_desktop"
+    label: "Show Desktop"
+    keys: ["cmd", "f3"]
+
+  thumbs_up:
+    action: "volume_up"
+    label: "Volume Up (+10%)"
+    step: 10
+
+  thumbs_down:
+    action: "volume_down"
+    label: "Volume Down (-10%)"
+    step: -10
+
+# Virtual Mouse (☝️ 1 Finger Pointing)
+mouse:
+  enabled: true
+  cursor_speed: 1.5
+  smooth_factor: 0.5
+  pinch_click_threshold: 0.04
+  scroll_speed: 1.2
+
+# Power Saver & Background Execution
+power_saver:
+  adaptive_fps: true
+  idle_fps: 3
+  active_fps: 30
+  idle_timeout_sec: 2.0
