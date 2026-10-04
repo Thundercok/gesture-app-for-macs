@@ -90,62 +90,88 @@ struct ApplicationSwitcherView: View {
                         )
                     }
 
-                    // Bimanual Optical Caliper Tension Bridge (Zoom HUD)
+                    // Bimanual Spatial Interaction (Photographer's Viewfinder Frame)
                     if state.isBimanualActive, let p = state.currentLandmarks, let s = state.secondaryLandmarks {
                         let pScreen = CGPoint(x: (1.0 - p.handCentroid.x) * screenW, y: p.handCentroid.y * screenH)
                         let sScreen = CGPoint(x: (1.0 - s.handCentroid.x) * screenW, y: s.handCentroid.y * screenH)
                         let midPt = CGPoint(x: (pScreen.x + sScreen.x) / 2.0, y: (pScreen.y + sScreen.y) / 2.0)
-                        let clutched = state.isDualPinchClutched
+                        let isFraming = state.isFramingZoomActive
 
-                        // Ambient laser shadow
-                        Path { path in
-                            path.move(to: pScreen)
-                            path.addLine(to: sScreen)
-                        }
-                        .stroke(Color.black.opacity(clutched ? 0.40 : 0.20), style: StrokeStyle(lineWidth: clutched ? 4.5 : 3.0, lineCap: .round))
+                        if isFraming {
+                            // 1. PHOTOGRAPHER'S VIEWFINDER FRAME (Corner Brackets ⌜ ⌝ ⌞ ⌟)
+                            let pTipScreen = CGPoint(x: (1.0 - p.indexTip.x) * screenW, y: p.indexTip.y * screenH)
+                            let sTipScreen = CGPoint(x: (1.0 - s.indexTip.x) * screenW, y: s.indexTip.y * screenH)
+                            let pThumbScreen = CGPoint(x: (1.0 - p.thumbTip.x) * screenW, y: p.thumbTip.y * screenH)
+                            let sThumbScreen = CGPoint(x: (1.0 - s.thumbTip.x) * screenW, y: s.thumbTip.y * screenH)
 
-                        // Optical Caliper Laser Beam (Solid when clutched, delicate dashed cord when standby)
-                        Path { path in
-                            path.move(to: pScreen)
-                            path.addLine(to: sScreen)
-                        }
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.0, green: 0.85, blue: 1.0).opacity(clutched ? 0.92 : 0.38),
-                                    Color.white.opacity(clutched ? 0.98 : 0.45),
-                                    Color(red: 0.0, green: 0.85, blue: 1.0).opacity(clutched ? 0.92 : 0.38)
-                                ],
-                                startPoint: UnitPoint(x: pScreen.x / screenW, y: pScreen.y / screenH),
-                                endPoint: UnitPoint(x: sScreen.x / screenW, y: sScreen.y / screenH)
-                            ),
-                            style: StrokeStyle(lineWidth: clutched ? 2.2 : 1.4, lineCap: .round, dash: clutched ? [] : [5, 5])
-                        )
-                        .shadow(color: Color(red: 0.0, green: 0.85, blue: 1.0).opacity(clutched ? 0.70 : 0.15), radius: clutched ? 10 : 3)
-                        .animation(.spring(response: 0.20, dampingFraction: 0.80), value: clutched)
+                            let allX = [pTipScreen.x, sTipScreen.x, pThumbScreen.x, sThumbScreen.x]
+                            let allY = [pTipScreen.y, sTipScreen.y, pThumbScreen.y, sThumbScreen.y]
 
-                        // Anchor Terminal Beads
-                        Circle()
-                            .fill(clutched ? Color(red: 0.0, green: 0.95, blue: 0.70) : Color.white.opacity(0.60))
-                            .frame(width: clutched ? 9 : 6, height: clutched ? 9 : 6)
-                            .shadow(color: clutched ? Color(red: 0.0, green: 0.95, blue: 0.70) : .clear, radius: 6)
-                            .position(pScreen)
+                            let rawMinX = allX.min() ?? (midPt.x - 100)
+                            let rawMaxX = allX.max() ?? (midPt.x + 100)
+                            let rawMinY = allY.min() ?? (midPt.y - 80)
+                            let rawMaxY = allY.max() ?? (midPt.y + 80)
 
-                        Circle()
-                            .fill(clutched ? Color(red: 0.0, green: 0.95, blue: 0.70) : Color.white.opacity(0.60))
-                            .frame(width: clutched ? 9 : 6, height: clutched ? 9 : 6)
-                            .shadow(color: clutched ? Color(red: 0.0, green: 0.95, blue: 0.70) : .clear, radius: 6)
-                            .position(sScreen)
+                            let centerBox = CGPoint(x: (rawMinX + rawMaxX) / 2.0, y: (rawMinY + rawMaxY) / 2.0)
+                            let boxW = max(140.0, (rawMaxX - rawMinX) + 40.0)
+                            let boxH = max(100.0, max(boxW * 0.55, (rawMaxY - rawMinY) + 40.0))
 
-                        // Optical Caliper Metric Readout Capsule (Anti-Vibecoded Native HUD)
-                        HStack(spacing: 8) {
-                            if clutched {
-                                Circle()
-                                    .fill(Color(red: 0.0, green: 0.95, blue: 0.70))
-                                    .frame(width: 6, height: 6)
-                                    .shadow(color: Color(red: 0.0, green: 0.95, blue: 0.70), radius: 3)
+                            let minX = centerBox.x - boxW / 2.0
+                            let maxX = centerBox.x + boxW / 2.0
+                            let minY = centerBox.y - boxH / 2.0
+                            let maxY = centerBox.y + boxH / 2.0
+                            let bLen: CGFloat = min(28.0, min(boxW, boxH) * 0.35)
 
-                                Text("CLUTCH ENGAGED")
+                            // Frame Border (Subtle dashed line)
+                            Path { path in
+                                path.addRect(CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY))
+                            }
+                            .stroke(
+                                Color(red: 0.0, green: 0.85, blue: 1.0).opacity(0.32),
+                                style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [6, 6])
+                            )
+
+                            // 4 Corner Brackets ⌜ ⌝ ⌞ ⌟
+                            Path { path in
+                                // Top-Left ⌜
+                                path.move(to: CGPoint(x: minX, y: minY + bLen))
+                                path.addLine(to: CGPoint(x: minX, y: minY))
+                                path.addLine(to: CGPoint(x: minX + bLen, y: minY))
+                                // Top-Right ⌝
+                                path.move(to: CGPoint(x: maxX - bLen, y: minY))
+                                path.addLine(to: CGPoint(x: maxX, y: minY))
+                                path.addLine(to: CGPoint(x: maxX, y: minY + bLen))
+                                // Bottom-Left ⌞
+                                path.move(to: CGPoint(x: minX, y: maxY - bLen))
+                                path.addLine(to: CGPoint(x: minX, y: maxY))
+                                path.addLine(to: CGPoint(x: minX + bLen, y: maxY))
+                                // Bottom-Right ⌟
+                                path.move(to: CGPoint(x: maxX - bLen, y: maxY))
+                                path.addLine(to: CGPoint(x: maxX, y: maxY))
+                                path.addLine(to: CGPoint(x: maxX, y: maxY - bLen))
+                            }
+                            .stroke(
+                                Color(red: 0.0, green: 0.95, blue: 0.70),
+                                style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .miter)
+                            )
+                            .shadow(color: Color(red: 0.0, green: 0.95, blue: 0.70).opacity(0.70), radius: 6)
+
+                            // Center Viewfinder Crosshair (+)
+                            Path { path in
+                                path.move(to: CGPoint(x: midPt.x - 10, y: midPt.y))
+                                path.addLine(to: CGPoint(x: midPt.x + 10, y: midPt.y))
+                                path.move(to: CGPoint(x: midPt.x, y: midPt.y - 10))
+                                path.addLine(to: CGPoint(x: midPt.x, y: midPt.y + 10))
+                            }
+                            .stroke(Color.white.opacity(0.60), lineWidth: 1.5)
+
+                            // Viewfinder Readout Capsule
+                            HStack(spacing: 8) {
+                                Image(systemName: "camera.viewfinder")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.70))
+
+                                Text("VIEWFINDER ZOOM")
                                     .font(.system(size: 9.5, weight: .bold))
                                     .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.70))
 
@@ -164,40 +190,63 @@ struct ApplicationSwitcherView: View {
                                 Text(String(format: "ZOOM: %d%%", state.bimanualZoomPercent))
                                     .font(.system(size: 11, weight: .semibold).monospacedDigit())
                                     .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
-                            } else {
-                                Image(systemName: "arrow.left.and.right")
-                                    .font(.system(size: 9.5, weight: .semibold))
-                                    .foregroundColor(Color.white.opacity(0.50))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(Color(red: 0.06, green: 0.07, blue: 0.10).opacity(0.90))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(Color(red: 0.0, green: 0.95, blue: 0.70).opacity(0.50), lineWidth: 1.0)
+                                    )
+                            )
+                            .shadow(color: Color.black.opacity(0.40), radius: 10, y: 3)
+                            .position(CGPoint(x: midPt.x, y: maxY + 24))
+                            .animation(.spring(response: 0.20, dampingFraction: 0.80), value: isFraming)
 
-                                Text("CALIPER READY")
+                        } else {
+                            // Viewfinder Standby Guide (Subtle tether & instruction pill)
+                            Path { path in
+                                path.move(to: pScreen)
+                                path.addLine(to: sScreen)
+                            }
+                            .stroke(
+                                Color.white.opacity(0.20),
+                                style: StrokeStyle(lineWidth: 1.0, lineCap: .round, dash: [4, 6])
+                            )
+
+                            // Viewfinder Standby Capsule
+                            HStack(spacing: 8) {
+                                Image(systemName: "camera.viewfinder")
                                     .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Color.white.opacity(0.60))
+
+                                Text("SPATIAL ZOOM")
+                                    .font(.system(size: 9.5, weight: .semibold))
                                     .foregroundColor(Color.white.opacity(0.85))
 
                                 Rectangle()
                                     .fill(Color.white.opacity(0.20))
                                     .frame(width: 1, height: 10)
 
-                                Text("PINCH BOTH HANDS TO ZOOM")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(Color.white.opacity(0.55))
+                                Text("KÉO 2 TAY RA XA / LẠI GẦN ĐỂ THU PHÓNG")
+                                    .font(.system(size: 9.5, weight: .medium))
+                                    .foregroundColor(Color.white.opacity(0.70))
                             }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(Color(red: 0.06, green: 0.07, blue: 0.10).opacity(0.88))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                                    )
+                            )
+                            .shadow(color: Color.black.opacity(0.40), radius: 10, y: 3)
+                            .position(midPt)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(Color(red: 0.06, green: 0.07, blue: 0.10).opacity(0.88))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(
-                                            clutched ? Color(red: 0.0, green: 0.85, blue: 1.0).opacity(0.40) : Color.white.opacity(0.18),
-                                            lineWidth: 0.8
-                                        )
-                                )
-                        )
-                        .shadow(color: Color.black.opacity(0.40), radius: 10, y: 3)
-                        .position(midPt)
-                        .animation(.spring(response: 0.20, dampingFraction: 0.80), value: clutched)
                     }
 
                     // C. Apple VisionOS Elastic Catenary Pearl Tether
@@ -420,6 +469,11 @@ struct ApplicationSwitcherView: View {
                             removal: .opacity
                         ))
                 }
+
+                // 5. Spatial Air Scroll HUD & Reticle (When in Air Scroll Mode)
+                if state.currentMode == .airScroll && (state.isAirScrollActive || (state.currentLandmarks?.isTwoFingers == true && state.currentLandmarks?.isInInteractionRange == true)) {
+                    SpatialAirScrollView(state: state, screenW: screenW, screenH: screenH)
+                }
             }
         }
         .ignoresSafeArea()
@@ -491,5 +545,135 @@ struct ModeTransitionBannerView: View {
                 )
         )
         .shadow(color: Color.black.opacity(0.45), radius: 24, x: 0, y: 10)
+    }
+}
+
+// MARK: - Native Apple VisionOS Spatial Air Scroll HUD & Reticle
+struct SpatialAirScrollView: View {
+    @ObservedObject var state: AppState
+    let screenW: CGFloat
+    let screenH: CGFloat
+
+    var body: some View {
+        let handPt = CGPoint(
+            x: max(80, min(screenW - 80, state.gesturePoint.x * screenW + 55)),
+            y: max(90, min(screenH - 90, state.gesturePoint.y * screenH))
+        )
+
+        let isScrollingUp = state.airScrollVelocity > 0.05
+        let isScrollingDown = state.airScrollVelocity < -0.05
+        let pearlOffset: CGFloat = {
+            if isScrollingDown {
+                return min(46.0, max(0.0, CGFloat(-state.airScrollVelocity * 45.0)))
+            } else if isScrollingUp {
+                return max(-46.0, min(0.0, CGFloat(-state.airScrollVelocity * 45.0)))
+            } else {
+                return 0.0
+            }
+        }()
+
+        VStack(spacing: 8) {
+            ZStack {
+                // Frosted Glass Vertical Cylinder Track
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(Color(red: 0.06, green: 0.07, blue: 0.10).opacity(0.88))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.35),
+                                        Color.white.opacity(0.10),
+                                        Color.white.opacity(0.04)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.0
+                            )
+                    )
+                    .frame(width: 44, height: 140)
+
+                VStack(spacing: 0) {
+                    // Top Arrow (Scrolled Up Indicator)
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isScrollingUp ? Color(red: 0.0, green: 0.88, blue: 1.0) : Color.white.opacity(0.30))
+                        .scaleEffect(isScrollingUp ? 1.30 : 1.0)
+                        .padding(.top, 12)
+                        .animation(.easeOut(duration: 0.15), value: isScrollingUp)
+
+                    Spacer()
+
+                    // Center Guideline / Scale Tick
+                    Rectangle()
+                        .fill(Color.white.opacity(0.20))
+                        .frame(width: 14, height: 1)
+
+                    Spacer()
+
+                    // Bottom Arrow (Scrolled Down Indicator)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isScrollingDown ? Color(red: 0.0, green: 0.88, blue: 1.0) : Color.white.opacity(0.30))
+                        .scaleEffect(isScrollingDown ? 1.30 : 1.0)
+                        .padding(.bottom, 12)
+                        .animation(.easeOut(duration: 0.15), value: isScrollingDown)
+                }
+                .frame(width: 44, height: 140)
+
+                // Glowing Tactile Pearl Thumb
+                ZStack {
+                    Circle()
+                        .fill(Color(red: 0.0, green: 0.85, blue: 1.0).opacity(0.30))
+                        .frame(width: 26, height: 26)
+                        .blur(radius: 6)
+
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color.white,
+                                    Color(red: 0.0, green: 0.88, blue: 1.0)
+                                ],
+                                center: .center,
+                                startRadius: 1,
+                                endRadius: 10
+                            )
+                        )
+                        .frame(width: 18, height: 18)
+                        .shadow(color: Color(red: 0.0, green: 0.85, blue: 1.0).opacity(0.6), radius: 6)
+                }
+                .offset(y: pearlOffset)
+                .animation(.spring(response: 0.20, dampingFraction: 0.72), value: pearlOffset)
+            }
+            .shadow(color: Color.black.opacity(0.50), radius: 20, y: 8)
+
+            // Dynamic Status Badge
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color(red: 0.0, green: 0.85, blue: 1.0))
+                    .frame(width: 5, height: 5)
+                    .shadow(color: Color(red: 0.0, green: 0.85, blue: 1.0), radius: 3)
+
+                Text(state.isAirScrollActive ? (isScrollingDown ? "Lướt xuống ↓" : "Lướt lên ↑") : "Flick để lướt")
+                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
+            .background(
+                Capsule()
+                    .fill(Color(red: 0.08, green: 0.09, blue: 0.12).opacity(0.90))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.8))
+            )
+            .shadow(color: Color.black.opacity(0.40), radius: 8, y: 3)
+        }
+        .position(handPt)
+        .transition(.scale(scale: 0.88).combined(with: .opacity))
     }
 }

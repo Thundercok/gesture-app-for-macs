@@ -103,6 +103,19 @@ enum ActionDispatcher {
         }
     }
 
+    /// Show Desktop (Cmd + F3)
+    static func showDesktop() {
+        let keyCode: CGKeyCode = 99 // F3
+        let src = CGEventSource(stateID: .hidSystemState)
+        if let down = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: true),
+           let up = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: false) {
+            down.flags = .maskCommand
+            up.flags = .maskCommand
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+        }
+    }
+
     // MARK: - Air Scroll & Momentum Engine
 
     /// Query macOS "natural scrolling" preference from com.apple.AppleMultitouchTrackpad / GlobalPreferences
@@ -119,45 +132,62 @@ enum ActionDispatcher {
 
     private static var momentumTimer: DispatchSourceTimer?
     private static let momentumQueue = DispatchQueue(label: "com.gestureflow.momentumscroll", qos: .userInteractive)
-    private static let momentumDecayFactor: Double = 0.915 // Native macOS ease-out decay per 16ms tick
+    private static let momentumDecayFactor: Double = 0.942 // Smooth iOS-like ease-out decay per 16ms tick
     private static let momentumCutoffVelocity: Double = 0.8 // Cutoff threshold in pixels
 
-    /// Direct scroll event respecting natural scrolling preference
-    static func scroll(pixelDeltaY: Int32) {
-        let sign: Int32 = isNaturalScrollingEnabled ? 1 : -1
-        let orientedDelta = pixelDeltaY * sign
+    static var isMomentumActive: Bool {
+        return momentumTimer != nil
+    }
+
+    static var onMomentumProgress: ((_ currentVelocityY: Double) -> Void)?
+    static var onMomentumEnded: (() -> Void)?
+
+    /// Direct scroll event respecting natural scrolling preference (2D vertical & horizontal)
+    static func scroll(pixelDeltaX: Int32 = 0, pixelDeltaY: Int32) {
+        let signY: Int32 = isNaturalScrollingEnabled ? 1 : -1
+        let signX: Int32 = isNaturalScrollingEnabled ? 1 : -1
+        let orientedDeltaY = pixelDeltaY * signY
+        let orientedDeltaX = pixelDeltaX * signX
         if let scrollEv = CGEvent(
             scrollWheelEvent2Source: nil,
             units: .pixel,
-            wheelCount: 1,
-            wheel1: orientedDelta,
-            wheel2: 0,
+            wheelCount: 2,
+            wheel1: orientedDeltaY,
+            wheel2: orientedDeltaX,
             wheel3: 0
         ) {
             scrollEv.post(tap: .cghidEventTap)
         }
     }
 
-    /// Implements momentum ease-out deceleration curve on gesture release
-    static func releaseScrollWithMomentum(initialVelocityY: Double) {
+    /// Implements momentum ease-out deceleration curve on gesture release (2D)
+    static func releaseScrollWithMomentum(initialVelocityX: Double = 0.0, initialVelocityY: Double) {
         momentumTimer?.cancel()
         momentumTimer = nil
 
-        var currentVelocity = initialVelocityY
-        guard abs(currentVelocity) > momentumCutoffVelocity else { return }
+        var currentVelocityY = initialVelocityY
+        var currentVelocityX = initialVelocityX
+        guard abs(currentVelocityY) > momentumCutoffVelocity || abs(currentVelocityX) > momentumCutoffVelocity else {
+            onMomentumEnded?()
+            return
+        }
 
         let timer = DispatchSource.makeTimerSource(queue: momentumQueue)
         timer.schedule(deadline: .now() + .milliseconds(16), repeating: .milliseconds(16))
         timer.setEventHandler {
-            currentVelocity *= momentumDecayFactor
-            if abs(currentVelocity) < momentumCutoffVelocity {
+            currentVelocityY *= momentumDecayFactor
+            currentVelocityX *= momentumDecayFactor
+            if abs(currentVelocityY) < momentumCutoffVelocity && abs(currentVelocityX) < momentumCutoffVelocity {
                 momentumTimer?.cancel()
                 momentumTimer = nil
+                onMomentumEnded?()
                 return
             }
-            let delta = Int32(currentVelocity.rounded())
-            if delta != 0 {
-                scroll(pixelDeltaY: delta)
+            onMomentumProgress?(currentVelocityY)
+            let deltaY = Int32(currentVelocityY.rounded())
+            let deltaX = Int32(currentVelocityX.rounded())
+            if deltaY != 0 || deltaX != 0 {
+                scroll(pixelDeltaX: deltaX, pixelDeltaY: deltaY)
             }
         }
         momentumTimer = timer
@@ -214,8 +244,11 @@ enum ActionDispatcher {
     }
 
     static func cancelMomentumScroll() {
-        momentumTimer?.cancel()
-        momentumTimer = nil
+        if momentumTimer != nil {
+            momentumTimer?.cancel()
+            momentumTimer = nil
+            onMomentumEnded?()
+        }
     }
 
     // MARK: - Application Switcher & Activation

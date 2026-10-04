@@ -27,6 +27,14 @@ final class GestureEngine {
     private var lastDx: CGFloat = 0.0
     private var filteredVelocity: Double = 0.0
 
+    // MARK: - Trackpad Spatial Swipes (Mac Navigation Mode)
+    private struct SwipeSample {
+        let point: CGPoint
+        let timestamp: TimeInterval
+    }
+    private var swipeHistory: [SwipeSample] = []
+    private var swipeCooldownUntil: TimeInterval = 0.0
+
     // MARK: - Intentionality Gating Constants (Tunable for Laptop & Desktop)
     static let facingCameraSuppressEnter: Double = 0.24
     static let facingCameraSuppressExit: Double = 0.32
@@ -60,11 +68,15 @@ final class GestureEngine {
         chargeLevel = 0.0
         lastDx = 0.0
         filteredVelocity = 0.0
+        swipeHistory.removeAll(keepingCapacity: true)
         isSuppressedByFacingCamera = false
         isSuppressedByDepthBand = false
         pendingSuppressReason = nil
         pendingSuppressFrames = 0
         activeSuppressReason = nil
+        state = .standby
+        onArmedStatus?(false)
+        onScanProgress?(0.0)
     }
 
     func evaluateIntentionalityGates(landmarks: HandLandmarks) -> GateSuppressReason? {
@@ -232,9 +244,104 @@ final class GestureEngine {
         let isPinching = lm.isPinching
         let currentPoint = lm.pinchCenter
 
+        let nowTimestamp = now.timeIntervalSinceReferenceDate
+        let rawTrackingPoint = CGPoint(x: 1.0 - lm.indexTip.x, y: lm.indexTip.y)
+
+        // Evaluate Trackpad Spatial Swipes (Left/Right Space, Up Mission Control, Down Desktop)
+        if activeSuppressReason == nil && lm.isInInteractionRange && !isPinching {
+            swipeHistory.append(SwipeSample(point: rawTrackingPoint, timestamp: nowTimestamp))
+            if swipeHistory.count > 14 {
+                swipeHistory.removeFirst()
+            }
+
+            if nowTimestamp > swipeCooldownUntil && swipeHistory.count >= 4 {
+                for offset in 3...min(7, swipeHistory.count - 1) {
+                    let oldSample = swipeHistory[swipeHistory.count - 1 - offset]
+                    let sampleDt = nowTimestamp - oldSample.timestamp
+                    guard sampleDt >= 0.035 && sampleDt <= 0.180 else { continue }
+
+                    let dx = rawTrackingPoint.x - oldSample.point.x
+                    let dy = rawTrackingPoint.y - oldSample.point.y
+                    let vx = Double(dx) / sampleDt
+                    let vy = Double(dy) / sampleDt
+                    let absDx = abs(dx)
+                    let absDy = abs(dy)
+                    let absVx = abs(vx)
+                    let absVy = abs(vy)
+
+                    // 1. Horizontal Swipes (Switch Space Left / Right)
+                    if absDx >= 0.035 && absVx >= 0.42 && absDx >= (1.15 * absDy) {
+                        if dx < 0 {
+                            // Swiped physical Left -> switch to space on the right (like 3-finger trackpad swipe left)
+                            ActionDispatcher.switchSpace(.right)
+                            ActionDispatcher.playFeedback(named: "Pop")
+                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                            onAction?("Chuyển Space Phải →")
+                        } else {
+                            // Swiped physical Right -> switch to space on the left
+                            ActionDispatcher.switchSpace(.left)
+                            ActionDispatcher.playFeedback(named: "Pop")
+                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                            onAction?("Chuyển Space Trái ←")
+                        }
+                        swipeCooldownUntil = nowTimestamp + 0.35
+                        swipeHistory.removeAll(keepingCapacity: true)
+                        return
+                    }
+
+                    // 2. Vertical Swipes (Mission Control / Show Desktop)
+                    if absDy >= 0.035 && absVy >= 0.42 && absDy >= (1.15 * absDx) {
+                        if dy > 0 {
+                            // Swiped physical Up -> Mission Control (like 3-finger trackpad swipe up)
+                            ActionDispatcher.triggerMissionControl()
+                            ActionDispatcher.playFeedback(named: "Glass")
+                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                            onAction?("Mission Control ↑")
+                        } else {
+                            // Swiped physical Down -> Show Desktop (like 3-finger trackpad swipe down)
+                            ActionDispatcher.showDesktop()
+                            ActionDispatcher.playFeedback(named: "Tink")
+                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                            onAction?("Hiện Desktop ↓")
+                        }
+                        swipeCooldownUntil = nowTimestamp + 0.45
+                        swipeHistory.removeAll(keepingCapacity: true)
+                        return
+                    }
+                }
+            }
+        } else {
+            swipeHistory.removeAll(keepingCapacity: true)
+        }
+
         switch state {
         case .standby:
             onArmedStatus?(false)
+
+            // Instant Pinch to open Dock Switcher (Eliminates forced 280ms palm charge)
+            if isPinching && lm.isInInteractionRange && activeSuppressReason == nil {
+                let apps = ActionDispatcher.getRecentApps()
+                if !apps.isEmpty {
+                    let initialIndex = (apps.count > 1) ? 1 : 0
+                    ActionDispatcher.playFeedback(named: "Pop")
+                    TelemetryLogger.shared.log(
+                        action: "dock_open",
+                        reason: nil,
+                        chargeLevel: 1.0,
+                        handCentroid: lm.handCentroid
+                    )
+                    onDockOpen?(apps, initialIndex)
+                    state = .engaged(
+                        anchor: currentPoint,
+                        selectedIndex: initialIndex,
+                        appCount: apps.count,
+                        openTime: now,
+                        lastStableIndex: initialIndex,
+                        stableSince: now
+                    )
+                    return
+                }
+            }
 
             // Intentionality Gates in Standby:
             // Drain charge gracefully under suppression instead of instant zero on single-frame noise

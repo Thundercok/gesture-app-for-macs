@@ -32,13 +32,17 @@
 
 | Mode | Gesture | Physical Action | System Event / Action |
 | :--- | :--- | :--- | :--- |
-| **System Armed** | 🖐 **Open Palm Presentation** | Giơ lòng bàn tay về phía webcam (~280ms) | Kích hoạt vòng quét (Charge Pump) $\to$ Kích hoạt trạng thái **Sẵn sàng (Armed)** trong 4.0s. |
-| **App Switcher** | 🤏 **Pinch & Hold** | Chụm ngón cái + trỏ khi đang Armed | Mở **Full-Screen Spatial Switcher Dock** (tập trung vào ứng dụng trước đó). |
-| **Quick Toggle** | 🤏 $\to$ 🖐 **Pinch & Immediate Release** | Chụm và nhả ngay tại chỗ (trong deadzone) | Chuyển đổi tức thì sang app trước đó (tương đương `⌘ + Tab`). |
-| **App Navigation** | 🤏 $\leftrightarrow$ **Pinch & Horizontal Drag** | Chụm và rê tay sang trái / phải | Cuộn chọn app với sợi dây đàn hồi (Elastic Pearl Tether) và phản hồi xúc giác **Force Touch Haptic Detent**. |
-| **Commit App** | 🖐 **Pinch Release** | Thả ngón tay khi đang chọn app | Chuyển tiêu điểm cửa sổ sang app đã chọn và đóng Switcher. |
-| **Mode Cycle** | 👏 **Bimanual Clap** | Vỗ hai bàn tay vào nhau dứt khoát | Chuyển đổi chế độ (App Switcher $\leftrightarrow$ Desktop Zoom $\leftrightarrow$ Cursor). |
-| **Desktop Zoom** | 👐 **Dual-Pinch Caliper** | Chụm **cả hai tay** và kéo giãn / thu hẹp | Phóng to / thu nhỏ canvas hoặc tài liệu (`⌘ + +` / `⌘ + -`) với haptic feedback. |
+| **1. Air Scroll (⌘1)** | 👆 **Smartphone Flick Up** | Vẩy ngón tay / bàn tay lên trên dứt khoát | Trang **lướt xuống dưới ↓** (đọc tiếp nội dung) với quán tính mượt mà chuẩn iOS. |
+| **1. Air Scroll (⌘1)** | 👇 **Smartphone Flick Down** | Vẩy ngón tay / bàn tay xuống dưới dứt khoát | Trang **lướt lên trên ↑** (quay về đầu trang). |
+| **1. Air Scroll (⌘1)** | ✋ / 👌 **Freeze / Pinch to Brake** | Giữ yên tay hoặc chụm ngón khi đang trượt | **Phanh dừng trang tức thì** tại chỗ (như chạm màn hình điện thoại). |
+| **2. Mac Navigation (⌘2)** | 👈 **Swipe Left** | Vuốt tay sang trái dứt khoát | Chuyển sang Desktop Space kế tiếp bên phải (`Ctrl + Right`). |
+| **2. Mac Navigation (⌘2)** | 👉 **Swipe Right** | Vuốt tay sang phải dứt khoát | Chuyển sang Desktop Space phía trước bên trái (`Ctrl + Left`). |
+| **2. Mac Navigation (⌘2)** | 👆 **Swipe Up** | Vuốt tay lên trên dứt khoát | Mở **Mission Control** (`Ctrl + Up`). |
+| **2. Mac Navigation (⌘2)** | 👇 **Swipe Down** | Vuốt tay xuống dưới dứt khoát | Hiện màn hình chính **Show Desktop** (`⌘ + F3`). |
+| **2. Mac Navigation (⌘2)** | 🤏 **Direct Pinch & Drag** | Chụm ngón cái + trỏ không cần chờ nạp 280ms | Mở **Visual Dock Switcher** duyệt app, nhả ra để chọn. |
+| **3. Spatial Zoom (⌘3)** | 👐 **Two-Hand Expand** | Đưa 2 bàn tay ra xa nhau tự nhiên | **Phóng to tài liệu / canvas (Zoom In: ⌘ +)** với haptic detents. |
+| **3. Spatial Zoom (⌘3)** | 🤲 **Two-Hand Contract** | Kéo 2 bàn tay lại gần nhau | **Thu nhỏ tài liệu / canvas (Zoom Out: ⌘ -)** với haptic detents. |
+| **Mode Switch** | ⌨️ **Menu Bar / Shortcuts** | Bấm `⌘1`, `⌘2`, `⌘3` hoặc chọn trên Menu Bar | Chuyển chế độ tức thì 100% chuẩn xác, có banner thông báo. |
 
 ---
 
@@ -54,7 +58,7 @@ flowchart TD
     Depth --> MultiHandData[MultiHandLandmarks: Primary & Secondary]
     
     MultiHandData --> Engine[GestureEngine: Intentionality Gating State Machine]
-    MultiHandData --> BimanualZoom[Bimanual Caliper: Dual-Pinch Clutch]
+    MultiHandData --> BimanualZoom[Bimanual Zoom: Photographer Viewfinder Frame]
     
     subgraph Intentionality Gates
         Engine --> Gate1[Face Proximity & 3D Proximity Gate]
@@ -135,7 +139,7 @@ flowchart TD
 #### 8. `UI/ApplicationSwitcherView.swift`
 - Full-screen spatial overlay panel (`screen.frame`, `.borderless`, `.nonactivatingPanel`).
 - **Elastic Catenary Pearl Tether**: Dynamically renders a catenary curve connecting the user's pinch reticle to the target application icon with 32px relaxed sag vs 8px taut spring physics.
-- **Bimanual Caliper HUD**: Visual tension bridge connecting left and right hand centroids during dual-pinch zoom with real-time metric span (cm) and zoom percentage (%).
+- **Photographer's Viewfinder HUD**: Visual optical reticle with 4 corner brackets ⌜ ⌝ ⌞ ⌟, dashed bounding frame, optical crosshairs (+), and real-time metric span (cm) and zoom percentage (%). Standby guide prompts when 2 hands are present.
 
 #### 9. `main.swift`
 - Orchestrates the full pipeline, AppKit window lifecycle, and menu bar item (`hand.raised.fill`).
@@ -143,7 +147,7 @@ flowchart TD
   - Resizes HUD via `panel.setFrame(newFrame, display: true, animate: false)` (avoiding AppKit's rectangular snapshot animation trap).
   - Explicitly clips native backing layer: `hostingView.layer?.cornerRadius = compact ? 16 : 18` and `hostingView.layer?.masksToBounds = true`.
   - Invalidate window shadow: `panel.invalidateShadow()`.
-- Bimanual Zoom Coordinator: Computes dual-pinch clutch state (`landmarks.isPinching && secondaryLandmarks.isPinching`) and dispatches zoom actions.
+- Bimanual Zoom Coordinator: Exclusive Viewfinder clutch state (`landmarks.isFramingCorner && secondaryLandmarks.isFramingCorner`). Suppresses single-hand App Switcher engine whenever two hands are in view to eliminate cross-gesture false triggers.
 - Built-in Intentionality Test Suite (`--test-gates`).
 
 ---

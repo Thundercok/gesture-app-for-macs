@@ -63,6 +63,67 @@ struct HUDView: View {
                         }
                         .foregroundColor(.orange)
                         .fixedSize()
+                    } else if state.isAirScrollActive {
+                        HStack(spacing: 4) {
+                            Image(systemName: state.airScrollVelocity < -0.05 ? "arrow.down" : (state.airScrollVelocity > 0.05 ? "arrow.up" : "arrow.up.and.down"))
+                                .font(.system(size: 9.5, weight: .bold))
+                            Text(state.airScrollVelocity < -0.05 ? "Lướt xuống ↓" : (state.airScrollVelocity > 0.05 ? "Lướt lên ↑" : "Đang lướt"))
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
+                        .fixedSize()
+                    } else if state.currentMode == .airScroll {
+                        HStack(spacing: 4) {
+                            Text("Air Scroll")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.90))
+                            if state.handDetected {
+                                Text("• Hất tay để lướt")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
+                            } else {
+                                Text("• Chờ hất tay")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.50))
+                            }
+                        }
+                        .fixedSize()
+                    } else if state.currentMode == .macNavigation {
+                        HStack(spacing: 4) {
+                            Text("Navigation")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.90))
+                            if state.isDockOpen {
+                                Text("• Chọn App")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                            } else if state.handDetected {
+                                Text("• Vuốt chuyển App")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.55))
+                            } else {
+                                Text("• Sẵn sàng")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.50))
+                            }
+                        }
+                        .fixedSize()
+                    } else if state.currentMode == .spatialZoom {
+                        HStack(spacing: 4) {
+                            Text("Spatial Zoom")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.90))
+                            if state.isBimanualActive {
+                                Text("• \(state.bimanualZoomPercent)%")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.70))
+                            } else {
+                                Text("• Giơ 2 tay")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.50))
+                            }
+                        }
+                        .fixedSize()
                     } else if state.isDockOpen {
                         Text("Chuyển App")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -173,6 +234,27 @@ struct HUDView: View {
                         .padding(.vertical, 3)
                         .background(Color.black.opacity(0.45))
                         .clipShape(Capsule())
+
+                        // Mode Selector Button
+                        Button {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                                state.cycleMode()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: state.currentMode.iconName)
+                                    .font(.system(size: 8.5, weight: .semibold))
+                                Text(state.currentMode.shortCode)
+                                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                            }
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(0.10))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Chế độ: \(state.currentMode.displayName) (Nhấp để đổi)")
 
                         // Camera View Mode
                         Button {
@@ -430,7 +512,15 @@ struct HUDView: View {
     }
 
     private var pillDotColor: Color {
-        if state.isArmed {
+        if state.isAirScrollActive {
+            return Color(red: 0.0, green: 0.85, blue: 1.0)
+        } else if state.currentMode == .airScroll && state.handDetected {
+            return Color(red: 0.20, green: 0.75, blue: 0.95).opacity(0.85)
+        } else if state.currentMode == .macNavigation && state.handDetected {
+            return Color(red: 0.0, green: 0.95, blue: 0.55)
+        } else if state.currentMode == .spatialZoom && state.isBimanualActive {
+            return Color(red: 0.0, green: 0.95, blue: 0.70)
+        } else if state.isArmed {
             return Color(red: 0.0, green: 0.95, blue: 0.55)
         } else if state.scanProgress > 0 {
             return Color.yellow

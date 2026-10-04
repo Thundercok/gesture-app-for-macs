@@ -414,6 +414,8 @@ struct HolographicSkeletonView: View {
                 }
             } else if isDockOpen {
                 return "Release to Select"
+            } else if landmarks.isFramingCorner {
+                return "Viewfinder Frame"
             } else if isArmed {
                 return "Pinch to Select"
             } else if scanProgress > 0.05 {
@@ -434,6 +436,8 @@ struct HolographicSkeletonView: View {
                 return .orange
             } else if isDockOpen {
                 return Color(red: 0.2, green: 0.7, blue: 1.0)
+            } else if landmarks.isFramingCorner {
+                return Color(red: 0.0, green: 0.95, blue: 0.70)
             } else if isArmed || (isDistanceOk && isTiltOk && landmarks.isStrictOpenPalm) {
                 return Color(red: 0.1, green: 0.9, blue: 0.5)
             } else if scanProgress > 0.05 {
@@ -452,6 +456,17 @@ struct HolographicSkeletonView: View {
             Text(statusText)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.white)
+
+            // High-Tech Mode Chip
+            Text(currentModeCode)
+                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                .foregroundColor(currentModeCode == "SCROLL" ? Color(red: 0.0, green: 0.90, blue: 1.0) : Color.white.opacity(0.80))
+                .padding(.horizontal, 4.5)
+                .padding(.vertical, 1.5)
+                .background(
+                    Capsule()
+                        .fill(currentModeCode == "SCROLL" ? Color(red: 0.0, green: 0.50, blue: 0.80).opacity(0.30) : Color.white.opacity(0.12))
+                )
 
             // Subtle divider
             Rectangle()

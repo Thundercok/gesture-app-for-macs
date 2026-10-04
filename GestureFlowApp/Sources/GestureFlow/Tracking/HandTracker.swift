@@ -17,6 +17,7 @@ struct HandLandmarks {
     let isFist: Bool               // 0 fingers extended
     let pinchDistance: CGFloat
     let isPinching: Bool
+    let isFramingCorner: Bool      // Index extended, Thumb spread, other fingers folded, not pinching (Viewfinder Frame corner)
     let isThreeFingerPinch: Bool   // Thumb + Index + Middle touching together (Trackpad Pick)
     let thumbMiddleDistance: CGFloat
     let indexMiddleDistance: CGFloat
@@ -67,6 +68,8 @@ final class HandTracker {
         var jointDropCounts: [VNHumanHandPoseObservation.JointName: Int] = [:]
         var wasPinching: Bool = false
         var pinchDropoutCount: Int = 0
+        var wasTwoFingers: Bool = false
+        var twoFingerDropoutCount: Int = 0
 
         func reset() {
             skeletonFilter.reset()
@@ -79,6 +82,8 @@ final class HandTracker {
             jointDropCounts.removeAll(keepingCapacity: true)
             wasPinching = false
             pinchDropoutCount = 0
+            wasTwoFingers = false
+            twoFingerDropoutCount = 0
         }
     }
 
@@ -362,8 +367,46 @@ final class HandTracker {
         if ringExt { extCount += 1 }
         if pinkyExt { extCount += 1 }
 
-        let isTwo = indexExt && middleExt && !ringExt && !pinkyExt
-        let isOne = indexExt && !middleExt && !ringExt && !pinkyExt
+        let middleMCP = pointsMap[.middleMCP] ?? channel.lastKnownJoints[.middleMCP] ?? .zero
+        let indexMCP = pointsMap[.indexMCP] ?? channel.lastKnownJoints[.indexMCP] ?? .zero
+        let pinkyMCP = pointsMap[.littleMCP] ?? channel.lastKnownJoints[.littleMCP] ?? .zero
+        let ringMCP = pointsMap[.ringMCP] ?? channel.lastKnownJoints[.ringMCP] ?? .zero
+        let ringTip = pointsMap[.ringTip] ?? pointsMap[.ringPIP] ?? channel.lastKnownJoints[.ringTip] ?? validWrist
+        let middleTipRaw = pointsMap[.middleTip] ?? pointsMap[.middlePIP] ?? channel.lastKnownJoints[.middleTip] ?? validIndexTip
+
+        let indexLen = dist(validIndexTip, indexMCP != .zero ? indexMCP : validWrist)
+        let middleLen = dist(middleTipRaw, middleMCP != .zero ? middleMCP : validWrist)
+        let ringLen = dist(ringTip, ringMCP != .zero ? ringMCP : validWrist)
+
+        // Ergonomic Relaxed Two-Finger Detection:
+        // Index and middle fingers extended; ring finger can be comfortably resting or folded
+        let isTwoCandidate = indexExt && middleExt && (!ringExt || (indexLen > ringLen * 1.10 && middleLen > ringLen * 1.08)) && (extCount <= 3)
+
+        let isTwo: Bool
+        if isTwoCandidate {
+            channel.wasTwoFingers = true
+            channel.twoFingerDropoutCount = 0
+            isTwo = true
+        } else if channel.wasTwoFingers {
+            let isFistOrOpen = (extCount == 0) || (extCount >= 4)
+            if isFistOrOpen {
+                channel.twoFingerDropoutCount += 4
+            } else {
+                channel.twoFingerDropoutCount += 1
+            }
+
+            if channel.twoFingerDropoutCount <= 8 {
+                isTwo = true
+            } else {
+                channel.wasTwoFingers = false
+                channel.twoFingerDropoutCount = 0
+                isTwo = false
+            }
+        } else {
+            isTwo = false
+        }
+
+        let isOne = indexExt && (!middleExt || indexLen > middleLen * 1.25) && (extCount <= 2)
         let isOpen = extCount >= 2
         let isFist = extCount == 0
 
@@ -400,10 +443,6 @@ final class HandTracker {
             if p6 <= p7 { return (thumbTip, middleTip) }
             return (thumbTip, middleDIP)
         }()
-
-        let middleMCP = pointsMap[.middleMCP] ?? channel.lastKnownJoints[.middleMCP] ?? .zero
-        let indexMCP = pointsMap[.indexMCP] ?? channel.lastKnownJoints[.indexMCP] ?? .zero
-        let pinkyMCP = pointsMap[.littleMCP] ?? channel.lastKnownJoints[.littleMCP] ?? .zero
 
         // Anthropometric scale normalization: palm length from wrist to middleMCP
         let palmLength: CGFloat = {
@@ -501,11 +540,13 @@ final class HandTracker {
         let planarFullness = min(1.0, max(0.0, (palmTriangleArea * 4.2) / (palmLengthDouble * palmLengthDouble)))
         let facingCamera = max(dotProduct * 0.70 + planarFullness * 0.30, dotProduct)
 
+        let smRingMCP = smoothedPoints.count >= 21 ? smoothedPoints[13] : (pointsMap[.ringMCP] ?? .zero)
         let depthResult = channel.depthEstimator.estimateDepth(
             wrist: validWrist,
-            middleMCP: middleMCP,
-            indexMCP: indexMCP,
-            pinkyMCP: pinkyMCP,
+            indexMCP: smIndexMCP,
+            middleMCP: smMiddleMCP,
+            ringMCP: smRingMCP,
+            pinkyMCP: smPinkyMCP,
             facingCamera: facingCamera,
             timestamp: nowTimestamp
         )
@@ -518,6 +559,10 @@ final class HandTracker {
         // Screen tilt and keyboard posture: allow facingCamera >= 0.28
         let isFacingDirectly = (facingCamera >= 0.28)
         let isStrictOpenPalm = (extCount >= 3) && indexExt && middleExt && thumbSpread && isHandPointingUpward && isFacingDirectly && (minPinchDist > 0.060)
+
+        // Framing Corner (L-Shape / Viewfinder): Index finger extended, Thumb spread out,
+        // at least one of middle/ring/pinky folded, not open palm, and strictly NOT pinching
+        let isFramingCorner = indexExt && thumbSpread && !isPinch && (!middleExt || !pinkyExt || !ringExt) && !isStrictOpenPalm && (extCount <= 3)
 
         let depthMeters = depthResult.estimatedDepth
         // Comfortable laptop interaction range: 0.18m (close-up over keyboard) to 0.85m (office chair posture)
@@ -570,6 +615,7 @@ final class HandTracker {
             isFist: isFist,
             pinchDistance: minPinchDist,
             isPinching: isPinch,
+            isFramingCorner: isFramingCorner,
             isThreeFingerPinch: isThreePinch,
             thumbMiddleDistance: middleThumbDist,
             indexMiddleDistance: twoFingersDist,

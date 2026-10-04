@@ -25,49 +25,49 @@ enum CameraDisplayMode: String, CaseIterable, Identifiable {
 }
 
 enum SystemMode: String, CaseIterable, Identifiable {
-    case appSwitcher = "APP_SWITCHER"
-    case windowManager = "WINDOW_MANAGER"
-    case spatialCursor = "SPATIAL_CURSOR"
+    case airScroll = "AIR_SCROLL"
+    case macNavigation = "MAC_NAVIGATION"
+    case spatialZoom = "SPATIAL_ZOOM"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .appSwitcher: return "Application Switcher"
-        case .windowManager: return "Window Manager"
-        case .spatialCursor: return "Spatial Cursor"
+        case .airScroll: return "Air Scroll"
+        case .macNavigation: return "Mac Navigation"
+        case .spatialZoom: return "Spatial Zoom"
         }
     }
 
     var iconName: String {
         switch self {
-        case .appSwitcher: return "square.grid.2x2.fill"
-        case .windowManager: return "macwindow.on.rectangle"
-        case .spatialCursor: return "cursorarrow.rays"
+        case .airScroll: return "arrow.up.and.down.circle.fill"
+        case .macNavigation: return "macwindow.on.rectangle"
+        case .spatialZoom: return "plus.magnifyingglass"
         }
     }
 
     var shortCode: String {
         switch self {
-        case .appSwitcher: return "APP_SW"
-        case .windowManager: return "WIN_MG"
-        case .spatialCursor: return "SPT_CR"
+        case .airScroll: return "SCROLL"
+        case .macNavigation: return "NAV"
+        case .spatialZoom: return "ZOOM"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .appSwitcher: return "Hand Navigation & Dock"
-        case .windowManager: return "Stage Manager & Window Snapping"
-        case .spatialCursor: return "6-DOF Pointer Tracking (Preview)"
+        case .airScroll: return "Hất tay để lướt như điện thoại"
+        case .macNavigation: return "Vuốt ngang chuyển App • Vuốt lên Mission Control"
+        case .spatialZoom: return "Đưa 2 tay ra xa / lại gần để thu phóng"
         }
     }
 
     func next() -> SystemMode {
         switch self {
-        case .appSwitcher: return .windowManager
-        case .windowManager: return .spatialCursor
-        case .spatialCursor: return .appSwitcher
+        case .airScroll: return .macNavigation
+        case .macNavigation: return .spatialZoom
+        case .spatialZoom: return .airScroll
         }
     }
 }
@@ -88,6 +88,12 @@ final class AppState: ObservableObject {
     @Published var dragDelta: CGSize = .zero
     @Published var cameraAspectRatio: CGFloat = 16.0 / 9.0
 
+    // Air Scroll Engine State
+    @Published var isAirScrollActive: Bool = false
+    @Published var airScrollVelocity: Double = 0.0
+    @Published var airScrollClutch: String? = nil
+    @Published var airScrollDeltaY: CGFloat = 0.0
+
     // Camera Canvas Display Mode
     @Published var displayMode: CameraDisplayMode = .minimal
 
@@ -100,11 +106,17 @@ final class AppState: ObservableObject {
     }
 
     // Spatial Multi-Mode Engine State (Clap Gesture Switcher)
-    @Published var currentMode: SystemMode = .appSwitcher
+    @Published var currentMode: SystemMode = .airScroll
     @Published var isModeBannerVisible: Bool = false
     @Published var modeBannerTitle: String = ""
     @Published var modeBannerSubtitle: String = ""
     private var modeBannerTimer: AnyCancellable?
+
+    func setMode(_ mode: SystemMode) {
+        guard currentMode != mode else { return }
+        currentMode = mode
+        showModeBanner(title: currentMode.displayName, subtitle: currentMode.subtitle)
+    }
 
     func cycleMode() {
         currentMode = currentMode.next()
@@ -145,6 +157,7 @@ final class AppState: ObservableObject {
     @Published var bimanualZoomPercent: Int = 100
     @Published var isBimanualActive: Bool = false
     @Published var isDualPinchClutched: Bool = false
+    @Published var isFramingZoomActive: Bool = false
 
     // Compact Mode State (Default true for sleek zero-distraction UX)
     @Published var isCompactHUD: Bool = true
@@ -177,6 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let cameraManager = CameraManager()
     private let tracker = HandTracker()
     private let engine = GestureEngine()
+    private let scrollEngine = ScrollEngine()
 
     private var frameCount = 0
     private var fpsTimer = Date()
@@ -243,6 +257,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         modeParentItem.submenu = modeMenu
         menu.addItem(modeParentItem)
 
+        let systemModeMenu = NSMenu()
+        let scrollItem = NSMenuItem(title: "1. Air Scroll (Lướt như điện thoại)", action: #selector(setModeAirScroll), keyEquivalent: "1")
+        scrollItem.target = self
+        systemModeMenu.addItem(scrollItem)
+
+        let navItem = NSMenuItem(title: "2. Mac Navigation (Vuốt chuyển App, Mission Control)", action: #selector(setModeMacNavigation), keyEquivalent: "2")
+        navItem.target = self
+        systemModeMenu.addItem(navItem)
+
+        let zoomItem = NSMenuItem(title: "3. Spatial Zoom (Thu phóng 2 tay tự nhiên)", action: #selector(setModeSpatialZoom), keyEquivalent: "3")
+        zoomItem.target = self
+        systemModeMenu.addItem(zoomItem)
+
+        let systemModeParent = NSMenuItem(title: "Chế độ hoạt động (System Mode)", action: nil, keyEquivalent: "")
+        systemModeParent.submenu = systemModeMenu
+        menu.addItem(systemModeParent)
+
         let permItem = NSMenuItem(title: "Cài đặt quyền Trợ năng (Accessibility)...", action: #selector(openAccessibilitySettings), keyEquivalent: "")
         permItem.target = self
         menu.addItem(permItem)
@@ -255,6 +286,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         item.menu = menu
         self.statusItem = item
+    }
+
+    @objc private func setModeAirScroll() {
+        appState.setMode(.airScroll)
+        engine.forceDischarge()
+    }
+
+    @objc private func setModeMacNavigation() {
+        appState.setMode(.macNavigation)
+        scrollEngine.forceDischarge()
+    }
+
+    @objc private func setModeSpatialZoom() {
+        appState.setMode(.spatialZoom)
+        engine.forceDischarge()
+        scrollEngine.forceDischarge()
     }
 
     @objc private func setModeMinimal() {
@@ -403,9 +450,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
             DispatchQueue.main.async {
                 self.appState.cycleMode()
+                if self.appState.currentMode == .airScroll {
+                    self.engine.forceDischarge()
+                } else {
+                    self.scrollEngine.forceDischarge()
+                }
                 ActionDispatcher.playFeedback(named: "Hero")
                 self.dockPanel?.ignoresMouseEvents = true
                 self.dockPanel?.orderFrontRegardless()
+            }
+        }
+
+        scrollEngine.onAction = { [weak self] actionTitle in
+            self?.appState.setAction(actionTitle)
+        }
+
+        scrollEngine.onScrollStatus = { [weak self] isScrolling, clutch, velocityY in
+            DispatchQueue.main.async {
+                self?.appState.isAirScrollActive = isScrolling
+                self?.appState.airScrollClutch = clutch?.rawValue
+                self?.appState.airScrollVelocity = velocityY
+            }
+        }
+
+        scrollEngine.onScrollDelta = { [weak self] deltaY, velocityY in
+            DispatchQueue.main.async {
+                self?.appState.airScrollDeltaY = deltaY
+                self?.appState.airScrollVelocity = velocityY
+            }
+        }
+
+        scrollEngine.onSuppressStatus = { [weak self] reason in
+            DispatchQueue.main.async {
+                self?.appState.activeSuppressReason = reason?.rawValue
             }
         }
 
@@ -500,49 +577,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let multiHand = self.tracker.processMultiHand(pixelBuffer, pts: pts)
             let landmarks = multiHand?.primary
             let secondaryLandmarks = multiHand?.secondary
-            self.engine.process(landmarks)
 
-            // Bimanual Spatial Zoom Engine (Two-Handed Laser Caliper with Dual-Pinch Clutch)
+            // Route to active system mode engine:
+            if self.appState.currentMode == .airScroll {
+                self.engine.forceDischarge()
+                if secondaryLandmarks != nil {
+                    self.scrollEngine.forceDischarge()
+                } else {
+                    self.scrollEngine.process(landmarks)
+                }
+            } else if self.appState.currentMode == .macNavigation {
+                self.scrollEngine.forceDischarge()
+                self.engine.process(landmarks)
+            } else if self.appState.currentMode == .spatialZoom {
+                self.scrollEngine.forceDischarge()
+                self.engine.forceDischarge()
+            }
+
+            // Bimanual Spatial Zoom Engine (Active in Spatial Zoom Mode)
             var bimanualSpan: CGFloat = 0.0
             var bimanualZoom: Int = 100
             var isBimanual = false
             var isClutched = false
 
-            if let p = landmarks, let s = secondaryLandmarks {
+            if self.appState.currentMode == .spatialZoom, let p = landmarks, let s = secondaryLandmarks {
                 let dx = p.handCentroid.x - s.handCentroid.x
                 let dy = p.handCentroid.y - s.handCentroid.y
                 let normSpan = hypot(dx, dy)
                 let avgZ = (p.estimatedDepth + s.estimatedDepth) / 2.0
                 let metricDist = normSpan * avgZ * (1.0 / MonocularDepthEstimator.normalizedFocalLength)
 
-                // Hands must be separated (> 10cm) to avoid collision with clap
-                if metricDist > 0.10 && p.isRaisedHand && s.isRaisedHand && !self.appState.isDockOpen {
+                // Natural Two-Hand Zoom: Hands must be separated (> 8cm). No awkward L-frames required!
+                if metricDist > 0.08 && p.isRaisedHand && s.isRaisedHand {
                     bimanualSpan = metricDist
                     isBimanual = true
-                    // Strict Dual-Pinch Clutch: Desktop zoom ONLY engages when BOTH hands are actively pinching!
-                    isClutched = p.isPinching && s.isPinching
+                    isClutched = true
 
-                    if isClutched {
-                        if self.previousBimanualSpan > 0.10 {
-                            let spanDelta = metricDist - self.previousBimanualSpan
-                            // Proportional magnification: 10cm motion ≈ 28% magnification
-                            let magDelta = spanDelta * 2.8
-                            if abs(magDelta) > 0.0020 {
-                                ActionDispatcher.magnify(delta: magDelta)
-                            }
-
-                            self.cumulativeBimanualScale = max(0.25, min(4.0, self.cumulativeBimanualScale + magDelta))
-                            bimanualZoom = Int((self.cumulativeBimanualScale * 100.0).rounded())
-                        } else {
-                            // Clutch just engaged: anchor span without jump
-                            bimanualZoom = Int((self.cumulativeBimanualScale * 100.0).rounded())
+                    if self.previousBimanualSpan > 0.08 {
+                        let spanDelta = metricDist - self.previousBimanualSpan
+                        // Proportional magnification: 10cm motion ≈ 28% magnification
+                        let magDelta = spanDelta * 2.8
+                        if abs(magDelta) > 0.0020 {
+                            ActionDispatcher.magnify(delta: magDelta)
                         }
-                        self.previousBimanualSpan = metricDist
+
+                        self.cumulativeBimanualScale = max(0.25, min(4.0, self.cumulativeBimanualScale + magDelta))
+                        bimanualZoom = Int((self.cumulativeBimanualScale * 100.0).rounded())
                     } else {
-                        // Clutch disengaged: hands are open/hovering, zoom is 100% locked!
-                        self.previousBimanualSpan = 0.0
+                        // Clutch just engaged: anchor span without jump
                         bimanualZoom = Int((self.cumulativeBimanualScale * 100.0).rounded())
                     }
+                    self.previousBimanualSpan = metricDist
                 } else {
                     self.previousBimanualSpan = 0.0
                 }
@@ -569,6 +654,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.appState.bimanualZoomPercent = bimanualZoom
                 self.appState.isBimanualActive = isBimanual
                 self.appState.isDualPinchClutched = isClutched
+                self.appState.isFramingZoomActive = isClutched
                 self.appState.handDetected = (landmarks != nil)
                 self.appState.fingerCount = landmarks?.fingerCount ?? 0
                 self.appState.isTwoFingers = landmarks?.isTwoFingers ?? false
@@ -577,15 +663,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.appState.estimatedDepth = landmarks?.estimatedDepth ?? 0.0
                 self.appState.facingCamera = landmarks?.facingCamera ?? 1.0
                 if let lm = landmarks {
-                    self.appState.gesturePoint = lm.pinchCenter
+                    if self.appState.currentMode == .airScroll {
+                        self.appState.gesturePoint = lm.isTwoFingers ? lm.twoFingerCenter : (lm.isPinching ? lm.pinchCenter : CGPoint(x: 1.0 - lm.indexTip.x, y: lm.indexTip.y))
+                    } else if self.appState.currentMode == .macNavigation {
+                        self.appState.gesturePoint = lm.isPinching ? lm.pinchCenter : CGPoint(x: 1.0 - lm.indexTip.x, y: lm.indexTip.y)
+                    } else {
+                        self.appState.gesturePoint = lm.pinchCenter
+                    }
                 }
 
                 // Strict deliberate gesture gating:
-                // Overlay ONLY appears when hand is intentionally held in flat palm pose or pinching in range,
-                // or during active charging/armed/switcher dock open/clap mode transition banner/bimanual active.
+                // Overlay ONLY appears when hand is intentionally held in flat palm pose, pinching, or mode in range,
+                // or during active charging/armed/switcher dock open/mode transition banner/bimanual active/air scroll active.
                 // It NEVER pops up intrusively while resting arm on desk watching videos!
-                let isDeliberateGesture = (landmarks != nil && (landmarks!.isStrictOpenPalm || landmarks!.isPinching || self.appState.scanProgress > 0.0) && landmarks!.isInInteractionRange)
-                let shouldShowOverlay = isDeliberateGesture || self.appState.scanProgress > 0.0 || self.appState.isArmed || self.appState.isDockOpen || self.appState.isModeBannerVisible || isBimanual
+                let isDeliberateGesture = (landmarks != nil && (landmarks!.isStrictOpenPalm || landmarks!.isPinching || (self.appState.currentMode == .airScroll && landmarks!.isTwoFingers) || self.appState.scanProgress > 0.0) && landmarks!.isInInteractionRange)
+                let shouldShowOverlay = isDeliberateGesture || self.appState.scanProgress > 0.0 || self.appState.isArmed || self.appState.isDockOpen || self.appState.isModeBannerVisible || isBimanual || self.appState.isAirScrollActive
 
                 if shouldShowOverlay {
                     self.dockPanel?.ignoresMouseEvents = !self.appState.isDockOpen
@@ -653,6 +745,7 @@ func runGateVerification() {
             isFist: false,
             pinchDistance: isPinch ? 0.03 : 0.15,
             isPinching: isPinch,
+            isFramingCorner: false,
             isThreeFingerPinch: false,
             thumbMiddleDistance: 0.12,
             indexMiddleDistance: 0.06,
