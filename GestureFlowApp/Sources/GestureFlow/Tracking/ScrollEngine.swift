@@ -110,10 +110,10 @@ final class ScrollEngine {
 
         // 1. Face-exclusion gate: Hand near face/chin in 2D AND at/near face depth in 3D
         if let faceBox = landmarks.faceBBox {
-            let expMinX = faceBox.minX - faceBox.width * 0.25
-            let expWidth = faceBox.width * 1.50
-            let expMinY = faceBox.minY - faceBox.height * 0.15
-            let expHeight = faceBox.height * 1.50
+            let expMinX = faceBox.minX - faceBox.width * 0.15
+            let expWidth = faceBox.width * 1.30
+            let expMinY = faceBox.minY - faceBox.height * 0.05
+            let expHeight = faceBox.height * 1.25
             let expandedFaceBBox = CGRect(x: expMinX, y: expMinY, width: expWidth, height: expHeight)
 
             let contactPoints = [
@@ -123,9 +123,11 @@ final class ScrollEngine {
             ]
 
             let isInFace2D = contactPoints.contains(where: { expandedFaceBBox.contains($0) })
-            if isInFace2D {
+            let isDeliberatePose = (landmarks.isTwoFingers || landmarks.isStrictOpenPalm) && landmarks.facingCamera >= 0.20
+
+            if isInFace2D && !isDeliberatePose {
                 if let fz = faceZ {
-                    if (fz - handZ) < 0.14 {
+                    if (fz - handZ) < 0.10 {
                         isSuppressedByFacingCamera = false
                         isSuppressedByDepthBand = false
                         return .faceProximity

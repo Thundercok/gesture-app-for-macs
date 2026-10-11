@@ -447,18 +447,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupPipeline() {
         tracker.onClapDetected = { [weak self] in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.appState.cycleMode()
-                if self.appState.currentMode == .airScroll {
-                    self.engine.forceDischarge()
-                } else {
-                    self.scrollEngine.forceDischarge()
-                }
-                ActionDispatcher.playFeedback(named: "Hero")
-                self.dockPanel?.ignoresMouseEvents = true
-                self.dockPanel?.orderFrontRegardless()
-            }
+            // Disabled: Clap detector was causing accidental mode switches whenever hands entered/left the camera frame.
+            // Modes must be chosen explicitly via Cmd+1/Cmd+2/Cmd+3 or the Menu Bar.
+            _ = self
         }
 
         scrollEngine.onAction = { [weak self] actionTitle in

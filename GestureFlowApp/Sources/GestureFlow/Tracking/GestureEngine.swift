@@ -34,17 +34,19 @@ final class GestureEngine {
     }
     private var swipeHistory: [SwipeSample] = []
     private var swipeCooldownUntil: TimeInterval = 0.0
+    private var lastPinchTime: TimeInterval = 0.0
+    private var lastSwipeTime: TimeInterval = 0.0
 
     // MARK: - Intentionality Gating Constants (Tunable for Laptop & Desktop)
-    static let facingCameraSuppressEnter: Double = 0.24
-    static let facingCameraSuppressExit: Double = 0.32
-    static let facingCameraThreshold: Double = 0.28 // Nominal midpoint
+    static let facingCameraSuppressEnter: Double = 0.18
+    static let facingCameraSuppressExit: Double = 0.26
+    static let facingCameraThreshold: Double = 0.22 // Nominal midpoint
 
-    static let depthBandDeltaEnter: CGFloat = 0.07
-    static let depthBandDeltaExit: CGFloat = 0.10
-    static let depthBandDelta: CGFloat = 0.08 // Nominal midpoint
+    static let depthBandDeltaEnter: CGFloat = 0.05
+    static let depthBandDeltaExit: CGFloat = 0.08
+    static let depthBandDelta: CGFloat = 0.06 // Nominal midpoint
 
-    static let faceBBoxExpansionFactor: CGFloat = 1.50
+    static let faceBBoxExpansionFactor: CGFloat = 1.25
 
     enum GateSuppressReason: String {
         case faceProximity = "face_proximity"
@@ -85,11 +87,11 @@ final class GestureEngine {
 
         // 1. Face-exclusion: Hand near face/chin in 2D AND at/near face depth in 3D
         if let faceBox = landmarks.faceBBox {
-            // Expand face box: 0.25x sides, 0.15x top, 0.35x bottom (covers chin and jawline)
-            let expMinX = faceBox.minX - faceBox.width * 0.25
-            let expWidth = faceBox.width * 1.50
-            let expMinY = faceBox.minY - faceBox.height * 0.15
-            let expHeight = faceBox.height * 1.50
+            // Expand face box moderately around jawline/chin: 0.15x sides, 0.05x top, 0.20x bottom
+            let expMinX = faceBox.minX - faceBox.width * 0.15
+            let expWidth = faceBox.width * 1.30
+            let expMinY = faceBox.minY - faceBox.height * 0.05
+            let expHeight = faceBox.height * 1.25
             let expandedFaceBBox = CGRect(
                 x: expMinX,
                 y: expMinY,
@@ -97,7 +99,7 @@ final class GestureEngine {
                 height: expHeight
             )
 
-            // Test unmirrored contact points only (not mirrored pinchCenter or drooping wrist)
+            // Test unmirrored contact points only
             let contactPoints = [
                 landmarks.handCentroid,
                 landmarks.indexTip,
@@ -106,11 +108,13 @@ final class GestureEngine {
 
             let isInFace2D = contactPoints.contains(where: { expandedFaceBBox.contains($0) })
 
-            if isInFace2D {
-                // If face depth is known, verify hand is not reaching in the foreground (arm's length)
+            // If the hand is an explicit, flat open palm presented towards camera, do not falsely suppress
+            let isDeliberatePalm = landmarks.isStrictOpenPalm && landmarks.facingCamera >= 0.22
+
+            if isInFace2D && !isDeliberatePalm {
                 if let fz = faceZ {
-                    // Hand is touching or near face if it is within 14cm of face depth
-                    if (fz - handZ) < 0.14 {
+                    // Hand is touching or near face if it is within 10cm of face depth
+                    if (fz - handZ) < 0.10 {
                         isSuppressedByFacingCamera = false
                         isSuppressedByDepthBand = false
                         return .faceProximity
@@ -247,8 +251,28 @@ final class GestureEngine {
         let nowTimestamp = now.timeIntervalSinceReferenceDate
         let rawTrackingPoint = CGPoint(x: 1.0 - lm.indexTip.x, y: lm.indexTip.y)
 
+        if isPinching {
+            lastPinchTime = nowTimestamp
+        }
+
         // Evaluate Trackpad Spatial Swipes (Left/Right Space, Up Mission Control, Down Desktop)
-        if activeSuppressReason == nil && lm.isInInteractionRange && !isPinching {
+        // Strict intentionality & mutual exclusion:
+        // 1. Hand MUST have open/extended fingers (not a loose fist, not pinching, not a pointing finger)
+        // 2. Must not have pinched recently (within 0.40s)
+        // 3. Engine must be in standby state
+        let isStandbyState: Bool = {
+            if case .standby = state { return true }
+            return false
+        }()
+        let isOpenFingers = (lm.fingerCount >= 3) || lm.isOpenHand || lm.isStrictOpenPalm
+        let isEligibleForSwipe = (activeSuppressReason == nil) &&
+                                 lm.isInInteractionRange &&
+                                 !isPinching &&
+                                 isStandbyState &&
+                                 isOpenFingers &&
+                                 (nowTimestamp - lastPinchTime > 0.40)
+
+        if isEligibleForSwipe {
             swipeHistory.append(SwipeSample(point: rawTrackingPoint, timestamp: nowTimestamp))
             if swipeHistory.count > 14 {
                 swipeHistory.removeFirst()
@@ -269,8 +293,8 @@ final class GestureEngine {
                     let absVx = abs(vx)
                     let absVy = abs(vy)
 
-                    // 1. Horizontal Swipes (Switch Space Left / Right)
-                    if absDx >= 0.035 && absVx >= 0.42 && absDx >= (1.15 * absDy) {
+                    // 1. Horizontal Swipes (Switch Space Left / Right) - deliberate displacement required
+                    if absDx >= 0.065 && absVx >= 0.50 && absDx >= (1.30 * absDy) {
                         if dx < 0 {
                             // Swiped physical Left -> switch to space on the right (like 3-finger trackpad swipe left)
                             ActionDispatcher.switchSpace(.right)
@@ -284,13 +308,14 @@ final class GestureEngine {
                             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                             onAction?("Chuyển Space Trái ←")
                         }
-                        swipeCooldownUntil = nowTimestamp + 0.35
+                        lastSwipeTime = nowTimestamp
+                        swipeCooldownUntil = nowTimestamp + 0.45
                         swipeHistory.removeAll(keepingCapacity: true)
                         return
                     }
 
                     // 2. Vertical Swipes (Mission Control / Show Desktop)
-                    if absDy >= 0.035 && absVy >= 0.42 && absDy >= (1.15 * absDx) {
+                    if absDy >= 0.065 && absVy >= 0.50 && absDy >= (1.30 * absDx) {
                         if dy > 0 {
                             // Swiped physical Up -> Mission Control (like 3-finger trackpad swipe up)
                             ActionDispatcher.triggerMissionControl()
@@ -304,7 +329,8 @@ final class GestureEngine {
                             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                             onAction?("Hiện Desktop ↓")
                         }
-                        swipeCooldownUntil = nowTimestamp + 0.45
+                        lastSwipeTime = nowTimestamp
+                        swipeCooldownUntil = nowTimestamp + 0.50
                         swipeHistory.removeAll(keepingCapacity: true)
                         return
                     }
@@ -318,8 +344,9 @@ final class GestureEngine {
         case .standby:
             onArmedStatus?(false)
 
-            // Instant Pinch to open Dock Switcher (Eliminates forced 280ms palm charge)
-            if isPinching && lm.isInInteractionRange && activeSuppressReason == nil {
+            // Instant Pinch to open Dock Switcher (requires not being immediately after a swipe)
+            let notInSwipeCooldown = (nowTimestamp - lastSwipeTime > 0.45)
+            if isPinching && lm.isInInteractionRange && activeSuppressReason == nil && notInSwipeCooldown {
                 let apps = ActionDispatcher.getRecentApps()
                 if !apps.isEmpty {
                     let initialIndex = (apps.count > 1) ? 1 : 0

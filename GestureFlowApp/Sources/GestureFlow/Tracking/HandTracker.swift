@@ -291,7 +291,7 @@ final class HandTracker {
 
         // Extract points with confidence threshold & temporal persistence
         for j in joints {
-            if let pt = try? obs.recognizedPoint(j), pt.confidence > 0.20 {
+            if let pt = try? obs.recognizedPoint(j), pt.confidence > 0.35 {
                 let p = CGPoint(x: pt.location.x, y: 1.0 - pt.location.y)
                 pointsMap[j] = p
                 channel.lastKnownJoints[j] = p
@@ -421,27 +421,21 @@ final class HandTracker {
         let thumbTip = pointsMap[.thumbTip] ?? pointsMap[.thumbIP] ?? channel.lastKnownJoints[.thumbTip] ?? validIndexTip
         let thumbIP = pointsMap[.thumbIP] ?? channel.lastKnownJoints[.thumbIP] ?? thumbTip
         let indexDIP = pointsMap[.indexDIP] ?? channel.lastKnownJoints[.indexDIP] ?? validIndexTip
-        let indexPIP = pointsMap[.indexPIP] ?? channel.lastKnownJoints[.indexPIP] ?? indexDIP
-        let middleDIP = pointsMap[.middleDIP] ?? channel.lastKnownJoints[.middleDIP] ?? middleTip
 
-        // Multi-joint contact cloud: test index & middle finger contact with thumb (laptop perspective)
-        let p1 = dist(thumbTip, validIndexTip)
-        let p2 = dist(thumbTip, indexDIP)
-        let p3 = dist(thumbTip, indexPIP)
-        let p4 = dist(thumbIP, validIndexTip)
-        let p5 = dist(thumbIP, indexDIP)
-        let p6 = dist(thumbTip, middleTip)
-        let p7 = dist(thumbTip, middleDIP)
-        let minPinchDist = min(p1, p2, p3, p4, p5, p6, p7)
+        // Strict index-thumb contact only (exclude middle finger and knuckles to eliminate false pinches)
+        let tipToTip = dist(thumbTip, validIndexTip)
+        let tipToDip = dist(thumbTip, indexDIP)
+        let ipToTip = dist(thumbIP, validIndexTip)
+        let minPinchDist = min(tipToTip, tipToDip, ipToTip)
 
         let contactPair: (CGPoint, CGPoint) = {
-            if p1 <= p2 && p1 <= p3 && p1 <= p4 && p1 <= p5 && p1 <= p6 && p1 <= p7 { return (thumbTip, validIndexTip) }
-            if p2 <= p3 && p2 <= p4 && p2 <= p5 && p2 <= p6 && p2 <= p7 { return (thumbTip, indexDIP) }
-            if p3 <= p4 && p3 <= p5 && p3 <= p6 && p3 <= p7 { return (thumbTip, indexPIP) }
-            if p4 <= p5 && p4 <= p6 && p4 <= p7 { return (thumbIP, validIndexTip) }
-            if p5 <= p6 && p5 <= p7 { return (thumbIP, indexDIP) }
-            if p6 <= p7 { return (thumbTip, middleTip) }
-            return (thumbTip, middleDIP)
+            if tipToTip <= tipToDip && tipToTip <= ipToTip {
+                return (thumbTip, validIndexTip)
+            } else if tipToDip <= ipToTip {
+                return (thumbTip, indexDIP)
+            } else {
+                return (thumbIP, validIndexTip)
+            }
         }()
 
         // Anthropometric scale normalization: palm length from wrist to middleMCP
@@ -452,16 +446,20 @@ final class HandTracker {
         }()
         let pinchRatio = minPinchDist / palmLength
 
+        // Reject if middle finger is also pressed against thumb (fist / clutching)
         let middleThumbDist = dist(middleTip, thumbTip)
-        let isNotFist = (extCount >= 1) || (minPinchDist < 0.085) || (middleThumbDist > 0.030)
+        let isSeparatedMiddle = middleThumbDist > (minPinchDist * 1.15) || middleThumbDist > 0.055
+        let isNotFist = (extCount >= 1) && isSeparatedMiddle
 
-        // Schmitt trigger with scale-invariant ratios: enter <= 0.42, sustain <= 0.58
+        // True pinch requires index & thumb to meet tightly:
+        // Enter: pinchRatio <= 0.32 AND minPinchDist <= 0.055
+        // Sustain: pinchRatio <= 0.44 AND minPinchDist <= 0.075
         let isPinchCandidate: Bool = {
             guard isRaised && isNotFist else { return false }
             if channel.wasPinching {
-                return (pinchRatio <= 0.58 && minPinchDist < 0.18) || (minPinchDist < 0.060)
+                return (pinchRatio <= 0.44 && minPinchDist <= 0.075)
             } else {
-                return (pinchRatio <= 0.42 && minPinchDist < 0.14) || (minPinchDist < 0.046)
+                return (pinchRatio <= 0.32 && minPinchDist <= 0.055)
             }
         }()
 
@@ -471,14 +469,9 @@ final class HandTracker {
             channel.pinchDropoutCount = 0
             isPinch = true
         } else if channel.wasPinching {
-            let isOpenHandRelease = extCount >= 3 || pinchRatio > 0.65 || minPinchDist > 0.18
-            if isOpenHandRelease {
-                channel.pinchDropoutCount += 4
-            } else {
-                channel.pinchDropoutCount += 1
-            }
-
-            if channel.pinchDropoutCount <= 10 {
+            // Rapid release: 2 frames dropout buffer to smooth single-frame camera noise (approx 33ms at 60fps), not 10 frames!
+            channel.pinchDropoutCount += 1
+            if channel.pinchDropoutCount <= 2 {
                 isPinch = true
             } else {
                 channel.wasPinching = false
