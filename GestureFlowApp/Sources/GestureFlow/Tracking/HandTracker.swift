@@ -291,7 +291,7 @@ final class HandTracker {
 
         // Extract points with confidence threshold & temporal persistence
         for j in joints {
-            if let pt = try? obs.recognizedPoint(j), pt.confidence > 0.35 {
+            if let pt = try? obs.recognizedPoint(j), pt.confidence > 0.40 {
                 let p = CGPoint(x: pt.location.x, y: 1.0 - pt.location.y)
                 pointsMap[j] = p
                 channel.lastKnownJoints[j] = p
@@ -300,7 +300,7 @@ final class HandTracker {
             } else {
                 let dropCount = (channel.jointDropCounts[j] ?? 0) + 1
                 channel.jointDropCounts[j] = dropCount
-                if dropCount <= 4, let lastPt = channel.lastKnownJoints[j] {
+                if dropCount <= 2, let lastPt = channel.lastKnownJoints[j] {
                     pointsMap[j] = lastPt
                     pointsList.append(lastPt)
                 } else {
@@ -308,6 +308,7 @@ final class HandTracker {
                 }
             }
         }
+
 
         let wrist = pointsMap[.wrist] ?? channel.lastKnownJoints[.wrist]
         let middleMCPRaw = pointsMap[.middleMCP] ?? channel.lastKnownJoints[.middleMCP]

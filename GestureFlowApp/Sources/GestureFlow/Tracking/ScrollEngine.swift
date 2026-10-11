@@ -95,25 +95,21 @@ final class ScrollEngine {
         stationaryFramesCount = 0
         cooldownUntilTimestamp = 0.0
         liveMomentumVelocity = 0.0
-        isSuppressedByFacingCamera = false
-        isSuppressedByDepthBand = false
         pendingSuppressReason = nil
         pendingSuppressFrames = 0
         activeSuppressReason = nil
+        IntentArbiter.shared.release(intent: .airScroll)
         onScrollStatus?(false, nil, 0.0)
         onScrollDelta?(0.0, 0.0)
     }
 
     func evaluateIntentionalityGates(landmarks: HandLandmarks) -> GestureEngine.GateSuppressReason? {
-        let handZ = landmarks.estimatedDepth
-        let faceZ = landmarks.faceImpliedDepth
-
-        // 1. Face-exclusion gate: Hand near face/chin in 2D AND at/near face depth in 3D
+        // 1. Simple robust 2D Face Exclusion: Hand overlapping face/chin in 2D AND not an intentional pose
         if let faceBox = landmarks.faceBBox {
-            let expMinX = faceBox.minX - faceBox.width * 0.15
-            let expWidth = faceBox.width * 1.30
+            let expMinX = faceBox.minX - faceBox.width * 0.10
+            let expWidth = faceBox.width * 1.20
             let expMinY = faceBox.minY - faceBox.height * 0.05
-            let expHeight = faceBox.height * 1.25
+            let expHeight = faceBox.height * 1.15
             let expandedFaceBBox = CGRect(x: expMinX, y: expMinY, width: expWidth, height: expHeight)
 
             let contactPoints = [
@@ -123,65 +119,21 @@ final class ScrollEngine {
             ]
 
             let isInFace2D = contactPoints.contains(where: { expandedFaceBBox.contains($0) })
-            let isDeliberatePose = (landmarks.isTwoFingers || landmarks.isStrictOpenPalm) && landmarks.facingCamera >= 0.20
+            let isDeliberatePose = (landmarks.isTwoFingers || landmarks.isStrictOpenPalm) && landmarks.facingCamera >= 0.18
 
             if isInFace2D && !isDeliberatePose {
-                if let fz = faceZ {
-                    if (fz - handZ) < 0.10 {
-                        isSuppressedByFacingCamera = false
-                        isSuppressedByDepthBand = false
-                        return .faceProximity
-                    }
-                } else {
-                    isSuppressedByFacingCamera = false
-                    isSuppressedByDepthBand = false
-                    return .faceProximity
-                }
+                return .faceProximity
             }
         }
 
-        // 2. Palm-orientation gate with Schmitt Trigger Hysteresis
-        if isSuppressedByFacingCamera {
-            if landmarks.facingCamera > ScrollEngine.facingCameraSuppressExit {
-                isSuppressedByFacingCamera = false
-            }
-        } else {
-            if landmarks.facingCamera < ScrollEngine.facingCameraSuppressEnter {
-                isSuppressedByFacingCamera = true
-            }
-        }
-
-        if isSuppressedByFacingCamera {
+        // 2. Extreme edge-on palm
+        if landmarks.facingCamera < ScrollEngine.facingCameraSuppressEnter {
             return .edgeOnPalm
-        }
-
-        // 3. Depth-band gate with Schmitt Trigger Hysteresis
-        let isNearHeadLevel: Bool = {
-            guard let faceBox = landmarks.faceBBox else { return true }
-            return landmarks.handCentroid.y < (faceBox.maxY + 0.08)
-        }()
-
-        if let fz = faceZ, isNearHeadLevel {
-            let diff = abs(handZ - fz)
-            if isSuppressedByDepthBand {
-                if diff >= ScrollEngine.depthBandDeltaExit {
-                    isSuppressedByDepthBand = false
-                }
-            } else {
-                if diff <= ScrollEngine.depthBandDeltaEnter {
-                    isSuppressedByDepthBand = true
-                }
-            }
-
-            if isSuppressedByDepthBand {
-                return .depthBand
-            }
-        } else {
-            isSuppressedByDepthBand = false
         }
 
         return nil
     }
+
 
     func process(_ landmarks: HandLandmarks?) {
         let now = Date()
@@ -297,6 +249,7 @@ final class ScrollEngine {
                 resetStroke()
                 cooldownUntilTimestamp = nowTimestamp + 0.15
                 stationaryFramesCount = 0
+                IntentArbiter.shared.commitAction(gesture: .airScroll, cooldown: 0.15, now: nowTimestamp)
                 return
             }
         }
@@ -311,7 +264,8 @@ final class ScrollEngine {
 
         if !isTrackingStroke {
             // Scan trajectory window (last 3 to 7 frames, approx 45ms to 120ms) for high-velocity flick impulse
-            if history.count >= 4 {
+            let canScroll = IntentArbiter.shared.canBegin(intent: .airScroll, now: nowTimestamp)
+            if canScroll && history.count >= 4 {
                 for offset in 3...min(7, history.count - 1) {
                     let oldSample = history[history.count - 1 - offset]
                     let dt = currentSample.timestamp - oldSample.timestamp
@@ -328,6 +282,7 @@ final class ScrollEngine {
                     // 2. High velocity: >= 0.42 normalized units/s (normal hand hover is 0.05 - 0.20)
                     // 3. Dominantly vertical: |dy| >= 1.15 * |dx|
                     if absDy >= 0.026 && abs(velY) >= 0.42 && absDy >= (1.15 * absDx) {
+                        IntentArbiter.shared.claim(intent: .airScroll)
                         isTrackingStroke = true
                         strokeDirection = dy > 0 ? .up : .down
                         strokeStartPoint = oldSample.point
@@ -410,6 +365,7 @@ final class ScrollEngine {
 
         // Set refractory cooldown to swallow the return recoil movement
         cooldownUntilTimestamp = nowTimestamp + recoilCooldownDuration
+        IntentArbiter.shared.commitAction(gesture: .airScroll, cooldown: 0.25, now: nowTimestamp)
 
         // Notify UI and listeners
         let actionName = direction == .up ? "Lướt xuống ↓" : "Lướt lên ↑"
@@ -426,12 +382,16 @@ final class ScrollEngine {
     }
 
     private func resetStroke() {
+        if isTrackingStroke {
+            IntentArbiter.shared.release(intent: .airScroll)
+        }
         isTrackingStroke = false
         strokeDirection = nil
         strokePeakVelocity = 0.0
         strokeStartPoint = .zero
         strokeStartTime = 0.0
     }
+
 
     private func handleHandLost(now: Date) {
         let lostDuration = now.timeIntervalSince(lastHandSeenTime)

@@ -163,6 +163,11 @@ final class AppState: ObservableObject {
     @Published var isCompactHUD: Bool = true
     var onToggleCompact: ((Bool) -> Void)?
 
+    // Dataset Recording State (Phase 1 Benchmark & Confusion Matrix)
+    @Published var isRecordingDataset: Bool = false
+    @Published var datasetLabel: String = "idle"
+
+
     private var actionTimer: AnyCancellable?
 
     func setAction(_ label: String) {
@@ -203,10 +208,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.setCompactHUD(compact)
         }
         setupMenuBar()
+        setupKeyboardMonitoring()
         checkPermissions()
         setupWindow()
         setupDockPanel()
         setupPipeline()
+
+        if let i = CommandLine.arguments.firstIndex(of: "--record") {
+            let targetPath: String
+            if i + 1 < CommandLine.arguments.count && !CommandLine.arguments[i + 1].hasPrefix("--") {
+                targetPath = CommandLine.arguments[i + 1]
+            } else {
+                let df = DateFormatter()
+                df.dateFormat = "yyyyMMdd_HHmmss"
+                let defaultName = "gestures_\(df.string(from: Date())).jsonl"
+                let defaultDir = ("~/Library/Application Support/GestureFlow/recordings" as NSString).expandingTildeInPath
+                targetPath = "\(defaultDir)/\(defaultName)"
+            }
+            if DatasetRecorder.shared.startRecording(toPath: targetPath) {
+                appState.isRecordingDataset = true
+                appState.datasetLabel = DatasetRecorder.shared.currentLabel
+            }
+        }
 
         if let i = CommandLine.arguments.firstIndex(of: "--record-depth"), i + 1 < CommandLine.arguments.count {
             let path = CommandLine.arguments[i + 1]
@@ -216,6 +239,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 height: cameraManager.bufferHeight,
                 device: cameraManager.deviceName
             )
+        }
+    }
+
+    private func setupKeyboardMonitoring() {
+        // Global monitor for labeling gestures during recording (keys '0'...'8')
+        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, DatasetRecorder.shared.isRecording else { return }
+            guard let characters = event.characters, let firstChar = characters.first else { return }
+            if DatasetRecorder.shared.setLabelFromKey(firstChar) {
+                DispatchQueue.main.async {
+                    self.appState.datasetLabel = DatasetRecorder.shared.currentLabel
+                    self.appState.setAction("Nhãn: [\(DatasetRecorder.shared.currentLabel)]")
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                }
+            }
+        }
+
+        // Local monitor when window/panel has focus
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, DatasetRecorder.shared.isRecording else { return event }
+            guard let characters = event.characters, let firstChar = characters.first else { return event }
+            if DatasetRecorder.shared.setLabelFromKey(firstChar) {
+                DispatchQueue.main.async {
+                    self.appState.datasetLabel = DatasetRecorder.shared.currentLabel
+                    self.appState.setAction("Nhãn: [\(DatasetRecorder.shared.currentLabel)]")
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                }
+                return nil
+            }
+            return event
+        }
+    }
+
+    @objc private func toggleRecordingDataset() {
+        if DatasetRecorder.shared.isRecording {
+            DatasetRecorder.shared.stopRecording()
+            appState.isRecordingDataset = false
+            appState.setAction("Đã dừng ghi dữ liệu")
+        } else {
+            let df = DateFormatter()
+            df.dateFormat = "yyyyMMdd_HHmmss"
+            let defaultName = "gestures_\(df.string(from: Date())).jsonl"
+            let defaultDir = ("~/Library/Application Support/GestureFlow/recordings" as NSString).expandingTildeInPath
+            let path = "\(defaultDir)/\(defaultName)"
+            if DatasetRecorder.shared.startRecording(toPath: path) {
+                appState.isRecordingDataset = true
+                appState.datasetLabel = DatasetRecorder.shared.currentLabel
+                appState.setAction("Đang ghi: \(defaultName)")
+            }
         }
     }
 
@@ -240,10 +312,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         compactItem.target = self
         menu.addItem(compactItem)
 
+        let recordItem = NSMenuItem(title: "Bắt đầu / Dừng ghi Dataset (Record)", action: #selector(toggleRecordingDataset), keyEquivalent: "r")
+        recordItem.target = self
+        menu.addItem(recordItem)
+
         let modeMenu = NSMenu()
         let minimalItem = NSMenuItem(title: "Tối giản (Vector)", action: #selector(setModeMinimal), keyEquivalent: "")
         minimalItem.target = self
         modeMenu.addItem(minimalItem)
+
 
         let monoItem = NSMenuItem(title: "Đơn sắc (Monochrome)", action: #selector(setModeMonochrome), keyEquivalent: "")
         monoItem.target = self
@@ -289,20 +366,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func setModeAirScroll() {
+        IntentArbiter.shared.forceReset()
         appState.setMode(.airScroll)
         engine.forceDischarge()
     }
 
     @objc private func setModeMacNavigation() {
+        IntentArbiter.shared.forceReset()
         appState.setMode(.macNavigation)
         scrollEngine.forceDischarge()
     }
 
     @objc private func setModeSpatialZoom() {
+        IntentArbiter.shared.forceReset()
         appState.setMode(.spatialZoom)
         engine.forceDischarge()
         scrollEngine.forceDischarge()
     }
+
 
     @objc private func setModeMinimal() {
         appState.displayMode = .minimal
@@ -355,8 +436,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quitApp() {
+        DatasetRecorder.shared.stopRecording()
         NSApp.terminate(nil)
     }
+
 
     private func checkPermissions() {
         let trusted = AXIsProcessTrusted()
@@ -598,8 +681,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let avgZ = (p.estimatedDepth + s.estimatedDepth) / 2.0
                 let metricDist = normSpan * avgZ * (1.0 / MonocularDepthEstimator.normalizedFocalLength)
 
-                // Natural Two-Hand Zoom: Hands must be separated (> 8cm). No awkward L-frames required!
-                if metricDist > 0.08 && p.isRaisedHand && s.isRaisedHand {
+                // Natural Two-Hand Zoom: Hands must be separated (> 8cm).
+                let canZoom = IntentArbiter.shared.canBegin(intent: .spatialZoom)
+                if metricDist > 0.08 && p.isRaisedHand && s.isRaisedHand && canZoom {
+                    IntentArbiter.shared.claim(intent: .spatialZoom)
                     bimanualSpan = metricDist
                     isBimanual = true
                     isClutched = true
@@ -620,10 +705,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     self.previousBimanualSpan = metricDist
                 } else {
+                    IntentArbiter.shared.release(intent: .spatialZoom)
                     self.previousBimanualSpan = 0.0
                 }
             } else {
+                IntentArbiter.shared.release(intent: .spatialZoom)
                 self.previousBimanualSpan = 0.0
+            }
+
+            if DatasetRecorder.shared.isRecording {
+                DatasetRecorder.shared.recordFrame(
+                    frameIndex: self.frameCount,
+                    timestamp: pts.seconds,
+                    primary: landmarks,
+                    secondary: secondaryLandmarks,
+                    predictedIntent: IntentArbiter.shared.currentIntent.rawValue
+                )
             }
 
             // Smart Power Management: 15 FPS when idle (>2.0s without hand), 60 FPS instant wake-up
@@ -687,9 +784,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        DatasetRecorder.shared.stopRecording()
         cameraManager.stop()
     }
 }
+
 
 // MARK: - Intentionality Gating Verification Harness
 func runGateVerification() {

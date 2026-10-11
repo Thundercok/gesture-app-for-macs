@@ -26,6 +26,9 @@ final class GestureEngine {
     private let stepWidth: CGFloat = 0.038       // Compact physical travel per app detent (~4-5cm)
     private var lastDx: CGFloat = 0.0
     private var filteredVelocity: Double = 0.0
+    private var lastCentroid: CGPoint = .zero
+    private var handSpeed: Double = 0.0
+    private var stableOpenFrames: Int = 0
 
     // MARK: - Trackpad Spatial Swipes (Mac Navigation Mode)
     private struct SwipeSample {
@@ -37,31 +40,22 @@ final class GestureEngine {
     private var lastPinchTime: TimeInterval = 0.0
     private var lastSwipeTime: TimeInterval = 0.0
 
-    // MARK: - Intentionality Gating Constants (Tunable for Laptop & Desktop)
-    static let facingCameraSuppressEnter: Double = 0.18
-    static let facingCameraSuppressExit: Double = 0.26
-    static let facingCameraThreshold: Double = 0.22 // Nominal midpoint
+    // MARK: - Intentionality Gating Constants
+    static let facingCameraSuppressEnter: Double = 0.12
+    static let facingCameraSuppressExit: Double = 0.20
+    static let facingCameraThreshold: Double = 0.16
 
-    static let depthBandDeltaEnter: CGFloat = 0.05
-    static let depthBandDeltaExit: CGFloat = 0.08
-    static let depthBandDelta: CGFloat = 0.06 // Nominal midpoint
-
-    static let faceBBoxExpansionFactor: CGFloat = 1.25
+    static let faceBBoxExpansionFactor: CGFloat = 1.20
 
     enum GateSuppressReason: String {
         case faceProximity = "face_proximity"
         case edgeOnPalm = "edge_on_palm"
-        case depthBand = "depth_band"
     }
 
     private var lastSuppressionLogTime: Date = .distantPast
     private var lastSuppressionReason: String?
 
-    // Schmitt-trigger gate hysteresis state
-    private var isSuppressedByFacingCamera: Bool = false
-    private var isSuppressedByDepthBand: Bool = false
-
-    // 3-frame temporal confirmation buffer to eliminate 5Hz chattering
+    // 3-frame temporal confirmation buffer to eliminate single-frame chattering
     private var pendingSuppressReason: GateSuppressReason?
     private var pendingSuppressFrames: Int = 0
     private let requiredSuppressFrames: Int = 3
@@ -70,36 +64,28 @@ final class GestureEngine {
         chargeLevel = 0.0
         lastDx = 0.0
         filteredVelocity = 0.0
+        handSpeed = 0.0
+        stableOpenFrames = 0
         swipeHistory.removeAll(keepingCapacity: true)
-        isSuppressedByFacingCamera = false
-        isSuppressedByDepthBand = false
         pendingSuppressReason = nil
         pendingSuppressFrames = 0
         activeSuppressReason = nil
         state = .standby
+        IntentArbiter.shared.release(intent: .pinchDock)
+        IntentArbiter.shared.release(intent: .swipe)
         onArmedStatus?(false)
         onScanProgress?(0.0)
     }
 
     func evaluateIntentionalityGates(landmarks: HandLandmarks) -> GateSuppressReason? {
-        let handZ = landmarks.estimatedDepth
-        let faceZ = landmarks.faceImpliedDepth
-
-        // 1. Face-exclusion: Hand near face/chin in 2D AND at/near face depth in 3D
+        // 1. Simple robust 2D Face Exclusion: Hand overlapping face/chin area AND not an explicit open palm
         if let faceBox = landmarks.faceBBox {
-            // Expand face box moderately around jawline/chin: 0.15x sides, 0.05x top, 0.20x bottom
-            let expMinX = faceBox.minX - faceBox.width * 0.15
-            let expWidth = faceBox.width * 1.30
+            let expMinX = faceBox.minX - faceBox.width * 0.10
+            let expWidth = faceBox.width * 1.20
             let expMinY = faceBox.minY - faceBox.height * 0.05
-            let expHeight = faceBox.height * 1.25
-            let expandedFaceBBox = CGRect(
-                x: expMinX,
-                y: expMinY,
-                width: expWidth,
-                height: expHeight
-            )
+            let expHeight = faceBox.height * 1.15
+            let expandedFaceBBox = CGRect(x: expMinX, y: expMinY, width: expWidth, height: expHeight)
 
-            // Test unmirrored contact points only
             let contactPoints = [
                 landmarks.handCentroid,
                 landmarks.indexTip,
@@ -107,71 +93,21 @@ final class GestureEngine {
             ]
 
             let isInFace2D = contactPoints.contains(where: { expandedFaceBBox.contains($0) })
-
-            // If the hand is an explicit, flat open palm presented towards camera, do not falsely suppress
-            let isDeliberatePalm = landmarks.isStrictOpenPalm && landmarks.facingCamera >= 0.22
+            let isDeliberatePalm = landmarks.isStrictOpenPalm && landmarks.facingCamera >= 0.18
 
             if isInFace2D && !isDeliberatePalm {
-                if let fz = faceZ {
-                    // Hand is touching or near face if it is within 10cm of face depth
-                    if (fz - handZ) < 0.10 {
-                        isSuppressedByFacingCamera = false
-                        isSuppressedByDepthBand = false
-                        return .faceProximity
-                    }
-                } else {
-                    isSuppressedByFacingCamera = false
-                    isSuppressedByDepthBand = false
-                    return .faceProximity
-                }
+                return .faceProximity
             }
         }
 
-        // 2. Palm-orientation with Schmitt Trigger Hysteresis
-        // Enter suppression when facingCamera < 0.36; Exit only when facingCamera > 0.44
-        if isSuppressedByFacingCamera {
-            if landmarks.facingCamera > GestureEngine.facingCameraSuppressExit {
-                isSuppressedByFacingCamera = false
-            }
-        } else {
-            if landmarks.facingCamera < GestureEngine.facingCameraSuppressEnter {
-                isSuppressedByFacingCamera = true
-            }
-        }
-
-        if isSuppressedByFacingCamera {
+        // 2. Extreme edge-on palm: Only suppress if palm is turned almost completely edge-on to the camera (< 0.12)
+        if landmarks.facingCamera < GestureEngine.facingCameraSuppressEnter {
             return .edgeOnPalm
-        }
-
-        // 3. Depth-band with Schmitt Trigger Hysteresis
-        // Depth-band only suppresses when hand is raised to head/ear/neck level
-        // On laptops, hands down in front of keyboard/chest (y > faceBox.maxY + 0.08) are in normal interaction space
-        let isNearHeadLevel: Bool = {
-            guard let faceBox = landmarks.faceBBox else { return true }
-            return landmarks.handCentroid.y < (faceBox.maxY + 0.08)
-        }()
-
-        if let fz = faceZ, isNearHeadLevel {
-            let diff = abs(handZ - fz)
-            if isSuppressedByDepthBand {
-                if diff >= GestureEngine.depthBandDeltaExit {
-                    isSuppressedByDepthBand = false
-                }
-            } else {
-                if diff <= GestureEngine.depthBandDeltaEnter {
-                    isSuppressedByDepthBand = true
-                }
-            }
-
-            if isSuppressedByDepthBand {
-                return .depthBand
-            }
-        } else {
-            isSuppressedByDepthBand = false
         }
 
         return nil
     }
+
 
     private func logSuppression(reason: GateSuppressReason, centroid: CGPoint) {
         let now = Date()
@@ -251,26 +187,45 @@ final class GestureEngine {
         let nowTimestamp = now.timeIntervalSinceReferenceDate
         let rawTrackingPoint = CGPoint(x: 1.0 - lm.indexTip.x, y: lm.indexTip.y)
 
+        // Calculate hand movement speed to reject spurious pinch during transit
+        if lastCentroid != .zero {
+            let centroidDelta = hypot(lm.handCentroid.x - lastCentroid.x, lm.handCentroid.y - lastCentroid.y)
+            let instSpeed = Double(centroidDelta) / dt
+            handSpeed = 0.65 * handSpeed + 0.35 * instSpeed
+        }
+        lastCentroid = lm.handCentroid
+
         if isPinching {
             lastPinchTime = nowTimestamp
         }
 
+        // Open hand stability tracking
+        let isOpenFingers = (lm.fingerCount >= 3) || lm.isOpenHand || lm.isStrictOpenPalm
+        if isOpenFingers && !isPinching {
+            stableOpenFrames += 1
+        } else {
+            stableOpenFrames = 0
+        }
+
         // Evaluate Trackpad Spatial Swipes (Left/Right Space, Up Mission Control, Down Desktop)
         // Strict intentionality & mutual exclusion:
-        // 1. Hand MUST have open/extended fingers (not a loose fist, not pinching, not a pointing finger)
-        // 2. Must not have pinched recently (within 0.40s)
+        // 1. Hand MUST have open/extended fingers stably for at least 3 frames
+        // 2. Must not have pinched recently (within 0.35s)
         // 3. Engine must be in standby state
+        // 4. IntentArbiter allows .swipe
         let isStandbyState: Bool = {
             if case .standby = state { return true }
             return false
         }()
-        let isOpenFingers = (lm.fingerCount >= 3) || lm.isOpenHand || lm.isStrictOpenPalm
-        let isEligibleForSwipe = (activeSuppressReason == nil) &&
-                                 lm.isInInteractionRange &&
-                                 !isPinching &&
-                                 isStandbyState &&
-                                 isOpenFingers &&
-                                 (nowTimestamp - lastPinchTime > 0.40)
+        let canSwipe = IntentArbiter.shared.canBegin(intent: .swipe, now: nowTimestamp)
+        var isEligibleForSwipe = false
+        if activeSuppressReason == nil && isStandbyState && !isPinching {
+            if lm.isInInteractionRange && isOpenFingers && stableOpenFrames >= 3 {
+                if (nowTimestamp - lastPinchTime) > 0.35 && canSwipe {
+                    isEligibleForSwipe = true
+                }
+            }
+        }
 
         if isEligibleForSwipe {
             swipeHistory.append(SwipeSample(point: rawTrackingPoint, timestamp: nowTimestamp))
@@ -294,7 +249,8 @@ final class GestureEngine {
                     let absVy = abs(vy)
 
                     // 1. Horizontal Swipes (Switch Space Left / Right) - deliberate displacement required
-                    if absDx >= 0.065 && absVx >= 0.50 && absDx >= (1.30 * absDy) {
+                    if absDx >= 0.065 && absVx >= 0.50 && absDx >= (absDy * 1.30) {
+                        IntentArbiter.shared.claim(intent: .swipe)
                         if dx < 0 {
                             // Swiped physical Left -> switch to space on the right (like 3-finger trackpad swipe left)
                             ActionDispatcher.switchSpace(.right)
@@ -311,11 +267,13 @@ final class GestureEngine {
                         lastSwipeTime = nowTimestamp
                         swipeCooldownUntil = nowTimestamp + 0.45
                         swipeHistory.removeAll(keepingCapacity: true)
+                        IntentArbiter.shared.commitAction(gesture: .swipe, cooldown: 0.42, now: nowTimestamp)
                         return
                     }
 
                     // 2. Vertical Swipes (Mission Control / Show Desktop)
-                    if absDy >= 0.065 && absVy >= 0.50 && absDy >= (1.30 * absDx) {
+                    if absDy >= 0.065 && absVy >= 0.50 && absDy >= (absDx * 1.30) {
+                        IntentArbiter.shared.claim(intent: .swipe)
                         if dy > 0 {
                             // Swiped physical Up -> Mission Control (like 3-finger trackpad swipe up)
                             ActionDispatcher.triggerMissionControl()
@@ -332,6 +290,7 @@ final class GestureEngine {
                         lastSwipeTime = nowTimestamp
                         swipeCooldownUntil = nowTimestamp + 0.50
                         swipeHistory.removeAll(keepingCapacity: true)
+                        IntentArbiter.shared.commitAction(gesture: .swipe, cooldown: 0.45, now: nowTimestamp)
                         return
                     }
                 }
@@ -344,11 +303,22 @@ final class GestureEngine {
         case .standby:
             onArmedStatus?(false)
 
-            // Instant Pinch to open Dock Switcher (requires not being immediately after a swipe)
-            let notInSwipeCooldown = (nowTimestamp - lastSwipeTime > 0.45)
-            if isPinching && lm.isInInteractionRange && activeSuppressReason == nil && notInSwipeCooldown {
+            // Instant Pinch to open Dock Switcher (requires stationary hand and IntentArbiter clearance)
+            let notInSwipeCooldown = (nowTimestamp - lastSwipeTime) > 0.40
+            let canPinchDock = IntentArbiter.shared.canBegin(intent: .pinchDock, now: nowTimestamp)
+            let isCalmHand = handSpeed < 0.42
+
+            let shouldOpenDock = isPinching &&
+                                 lm.isInInteractionRange &&
+                                 (activeSuppressReason == nil) &&
+                                 notInSwipeCooldown &&
+                                 canPinchDock &&
+                                 isCalmHand
+
+            if shouldOpenDock {
                 let apps = ActionDispatcher.getRecentApps()
                 if !apps.isEmpty {
+                    IntentArbiter.shared.claim(intent: .pinchDock)
                     let initialIndex = (apps.count > 1) ? 1 : 0
                     ActionDispatcher.playFeedback(named: "Pop")
                     TelemetryLogger.shared.log(
@@ -369,6 +339,7 @@ final class GestureEngine {
                     return
                 }
             }
+
 
             // Intentionality Gates in Standby:
             // Drain charge gracefully under suppression instead of instant zero on single-frame noise
@@ -413,7 +384,6 @@ final class GestureEngine {
 
             // Gating in Armed State:
             // Only face proximity disarms when armed (e.g. scratching face/chin).
-            // Do NOT disarm on edge-on palm: rotating the hand is naturally required to pinch!
             if let reason = activeSuppressReason {
                 if reason == .faceProximity {
                     logSuppression(reason: reason, centroid: lm.handCentroid)
@@ -428,10 +398,12 @@ final class GestureEngine {
             onArmedStatus?(true)
             onScanProgress?(1.0)
 
-            if isPinching {
+            let canPinchArmed = IntentArbiter.shared.canBegin(intent: .pinchDock, now: nowTimestamp)
+            if isPinching && canPinchArmed && handSpeed < 0.42 {
                 let apps = ActionDispatcher.getRecentApps()
                 guard !apps.isEmpty else { return }
 
+                IntentArbiter.shared.claim(intent: .pinchDock)
                 // Index 1 is the previous app (instant Cmd+Tab toggle target)
                 let initialIndex = (apps.count > 1) ? 1 : 0
                 ActionDispatcher.playFeedback(named: "Pop")
@@ -480,6 +452,7 @@ final class GestureEngine {
 
                 onDockSelectIndex?(commitIndex, .zero)
                 commitSwitch(centroid: currentPoint)
+                IntentArbiter.shared.commitAction(gesture: .pinchDock, cooldown: 0.38, now: nowTimestamp)
                 lastDx = 0.0
                 filteredVelocity = 0.0
                 state = .cooldown(until: now.addingTimeInterval(0.30))
@@ -571,15 +544,15 @@ final class GestureEngine {
                 let commitIndex = (elapsedSinceChange < 0.12) ? lastStableIndex : selectedIndex
                 onDockSelectIndex?(commitIndex, .zero)
                 commitSwitch(centroid: .zero)
+                IntentArbiter.shared.commitAction(gesture: .pinchDock, cooldown: 0.35, now: now.timeIntervalSinceReferenceDate)
                 state = .cooldown(until: now.addingTimeInterval(0.35))
                 return
             }
 
+            IntentArbiter.shared.release(intent: .pinchDock)
             state = .standby
             onArmedStatus?(false)
             onScanProgress?(0.0)
-            isSuppressedByFacingCamera = false
-            isSuppressedByDepthBand = false
             pendingSuppressReason = nil
             pendingSuppressFrames = 0
             activeSuppressReason = nil

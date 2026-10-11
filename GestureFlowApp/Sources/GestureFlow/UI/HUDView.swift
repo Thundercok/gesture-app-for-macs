@@ -47,122 +47,20 @@ struct HUDView: View {
                         }
                     }
 
-                    if let action = state.latestAction {
-                        Text(action)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                    } else if let reason = state.activeSuppressReason {
+                    if state.isRecordingDataset {
                         HStack(spacing: 4) {
-                            Image(systemName: "shield.lefthalf.filled")
-                                .font(.system(size: 8.5))
-                            Text(reason == "face_proximity" ? "Vùng mặt" : (reason == "edge_on_palm" ? "Nghiêng tay" : "Khoảng cách"))
-                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                        }
-                        .foregroundColor(.orange)
-                        .fixedSize()
-                    } else if state.isAirScrollActive {
-                        HStack(spacing: 4) {
-                            Image(systemName: state.airScrollVelocity < -0.05 ? "arrow.down" : (state.airScrollVelocity > 0.05 ? "arrow.up" : "arrow.up.and.down"))
-                                .font(.system(size: 9.5, weight: .bold))
-                            Text(state.airScrollVelocity < -0.05 ? "Lướt xuống ↓" : (state.airScrollVelocity > 0.05 ? "Lướt lên ↑" : "Đang lướt"))
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                        }
-                        .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
-                        .fixedSize()
-                    } else if state.currentMode == .airScroll {
-                        HStack(spacing: 4) {
-                            Text("Air Scroll")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.90))
-                            if state.handDetected {
-                                Text("• Hất tay để lướt")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
-                            } else {
-                                Text("• Chờ hất tay")
-                                    .font(.system(size: 10, weight: .regular))
-                                    .foregroundColor(.white.opacity(0.50))
-                            }
-                        }
-                        .fixedSize()
-                    } else if state.currentMode == .macNavigation {
-                        HStack(spacing: 4) {
-                            Text("Navigation")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.90))
-                            if state.isDockOpen {
-                                Text("• Chọn App")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white)
-                            } else if state.handDetected {
-                                Text("• Vuốt chuyển App")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.55))
-                            } else {
-                                Text("• Sẵn sàng")
-                                    .font(.system(size: 10, weight: .regular))
-                                    .foregroundColor(.white.opacity(0.50))
-                            }
-                        }
-                        .fixedSize()
-                    } else if state.currentMode == .spatialZoom {
-                        HStack(spacing: 4) {
-                            Text("Spatial Zoom")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.90))
-                            if state.isBimanualActive {
-                                Text("• \(state.bimanualZoomPercent)%")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.70))
-                            } else {
-                                Text("• Giơ 2 tay")
-                                    .font(.system(size: 10, weight: .regular))
-                                    .foregroundColor(.white.opacity(0.50))
-                            }
-                        }
-                        .fixedSize()
-                    } else if state.isDockOpen {
-                        Text("Chuyển App")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
-                            .fixedSize()
-                    } else if state.isArmed {
-                        Text("Sẵn sàng")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.55))
-                            .fixedSize()
-                    } else if state.scanProgress > 0 {
-                        HStack(spacing: 4) {
-                            Text("Quét bàn tay")
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundColor(.yellow)
-                                .fixedSize()
-                            Text("\(Int(state.scanProgress * 100))%")
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 6, height: 6)
+                            Text("REC [\(state.datasetLabel)]")
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(.yellow)
-                                .fixedSize()
+                                .foregroundColor(.red)
                         }
-                    } else {
-                        Text("GestureFlow")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.90))
-                            .fixedSize()
-
-                        if state.handDetected {
-                            Text(String(format: "• %.2fm", state.estimatedDepth))
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.85))
-                                .fixedSize()
-                        } else {
-                            Text("• Đang chờ")
-                                .font(.system(size: 10, weight: .regular))
-                                .foregroundColor(.white.opacity(0.50))
-                                .fixedSize()
-                        }
+                        .fixedSize()
                     }
+
+                    pillStatusView
+
 
                     Spacer()
 
@@ -511,7 +409,128 @@ struct HUDView: View {
         .clipShape(RoundedRectangle(cornerRadius: state.isCompactHUD ? 16 : 18, style: .continuous))
     }
 
+    @ViewBuilder
+    private var pillStatusView: some View {
+        if let action = state.latestAction {
+            Text(action)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .fixedSize()
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        } else if let reason = state.activeSuppressReason {
+            HStack(spacing: 4) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: 8.5))
+                Text(reason == "face_proximity" ? "Vùng mặt" : (reason == "edge_on_palm" ? "Nghiêng tay" : "Khoảng cách"))
+                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+            }
+            .foregroundColor(.orange)
+            .fixedSize()
+        } else if state.isAirScrollActive {
+            HStack(spacing: 4) {
+                Image(systemName: state.airScrollVelocity < -0.05 ? "arrow.down" : (state.airScrollVelocity > 0.05 ? "arrow.up" : "arrow.up.and.down"))
+                    .font(.system(size: 9.5, weight: .bold))
+                Text(state.airScrollVelocity < -0.05 ? "Lướt xuống ↓" : (state.airScrollVelocity > 0.05 ? "Lướt lên ↑" : "Đang lướt"))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+            }
+            .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
+            .fixedSize()
+        } else if state.currentMode == .airScroll {
+            HStack(spacing: 4) {
+                Text("Air Scroll")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.90))
+                if state.handDetected {
+                    Text("• Hất tay để lướt")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
+                } else {
+                    Text("• Chờ hất tay")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.white.opacity(0.50))
+                }
+            }
+            .fixedSize()
+        } else if state.currentMode == .macNavigation {
+            HStack(spacing: 4) {
+                Text("Navigation")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.90))
+                if state.isDockOpen {
+                    Text("• Chọn App")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                } else if state.handDetected {
+                    Text("• Vuốt chuyển App")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.55))
+                } else {
+                    Text("• Sẵn sàng")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.white.opacity(0.50))
+                }
+            }
+            .fixedSize()
+        } else if state.currentMode == .spatialZoom {
+            HStack(spacing: 4) {
+                Text("Spatial Zoom")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.90))
+                if state.isBimanualActive {
+                    Text("• \(state.bimanualZoomPercent)%")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.70))
+                } else {
+                    Text("• Giơ 2 tay")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.white.opacity(0.50))
+                }
+            }
+            .fixedSize()
+        } else if state.isDockOpen {
+            Text("Chuyển App")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(.white)
+                .fixedSize()
+        } else if state.isArmed {
+            Text("Sẵn sàng")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(Color(red: 0.0, green: 0.95, blue: 0.55))
+                .fixedSize()
+        } else if state.scanProgress > 0 {
+            HStack(spacing: 4) {
+                Text("Quét bàn tay")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.yellow)
+                    .fixedSize()
+                Text("\(Int(state.scanProgress * 100))%")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.yellow)
+                    .fixedSize()
+            }
+        } else {
+            Text("GestureFlow")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(.white.opacity(0.90))
+                .fixedSize()
+
+            if state.handDetected {
+                Text(String(format: "• %.2fm", state.estimatedDepth))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.85))
+                    .fixedSize()
+            } else {
+                Text("• Đang chờ")
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundColor(.white.opacity(0.50))
+                    .fixedSize()
+            }
+        }
+    }
+
     private var pillDotColor: Color {
+
         if state.isAirScrollActive {
             return Color(red: 0.0, green: 0.85, blue: 1.0)
         } else if state.currentMode == .airScroll && state.handDetected {
