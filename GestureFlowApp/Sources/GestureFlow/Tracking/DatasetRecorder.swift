@@ -11,6 +11,8 @@ struct HandFrameRecord: Codable {
     let frameIndex: Int
     let groundTruth: String
     let predictedIntent: String
+    /// Non-empty only on the frame where an action was actually committed (event, not state).
+    let firedIntent: String
     let handDetected: Bool
     let fingerCount: Int
     let isPinching: Bool
@@ -83,7 +85,11 @@ final class DatasetRecorder {
         print("[DatasetRecorder] Ground-Truth Label => [\(label)]")
     }
 
+    /// When true (guided session running) manual hotkeys are ignored so they can't corrupt schedule labels.
+    var labelsLocked: Bool = false
+
     func setLabelFromKey(_ keyChar: Character) -> Bool {
+        guard !labelsLocked else { return false }
         let labelMap: [Character: String] = [
             "0": "idle",
             "1": "pinch_dock",
@@ -118,7 +124,8 @@ final class DatasetRecorder {
         timestamp: TimeInterval,
         primary: HandLandmarks?,
         secondary: HandLandmarks?,
-        predictedIntent: String
+        predictedIntent: String,
+        firedIntent: String = ""
     ) {
         guard isRecording, let handle = fileHandle else { return }
 
@@ -130,6 +137,7 @@ final class DatasetRecorder {
             frameIndex: frameIndex,
             groundTruth: currentLabel,
             predictedIntent: predictedIntent,
+            firedIntent: firedIntent,
             handDetected: primary != nil,
             fingerCount: primary?.fingerCount ?? 0,
             isPinching: primary?.isPinching ?? false,

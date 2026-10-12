@@ -19,6 +19,8 @@ final class IntentArbiter {
     private(set) var activeIntent: GestureIntent = .idle
     private var cooldownUntil: TimeInterval = 0.0
     private var lastActionTimestamp: TimeInterval = 0.0
+    private var commitSequenceStorage: Int = 0
+    private var lastCommittedStorage: GestureIntent = .idle
 
     let defaultCooldownDuration: TimeInterval = 0.380
 
@@ -62,6 +64,23 @@ final class IntentArbiter {
         cooldownUntil = now + duration
         lastActionTimestamp = now
         activeIntent = .cooldown
+        commitSequenceStorage += 1
+        lastCommittedStorage = gesture
+    }
+
+    /// Monotonic counter incremented on every committed (fired) action.
+    /// The dataset recorder diffs this per frame to log discrete fired events.
+    var commitSequence: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return commitSequenceStorage
+    }
+
+    /// The gesture domain of the most recently committed action.
+    var lastCommitted: GestureIntent {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastCommittedStorage
     }
 
     func forceReset() {

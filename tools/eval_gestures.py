@@ -221,6 +221,158 @@ def print_ascii_report(results: Dict[str, Any], title: str = "GESTURE RECOGNITIO
     print("=" * 78 + "\n")
 
 
+# ---------------------------------------------------------------------------
+# Event-level evaluation
+#
+# Swipes/flicks are instantaneous: the arbiter claims and commits in a single
+# frame, so a frame-level "state" confusion matrix almost never sees them.
+# What matters to the user is: "did the right action fire once, and nothing
+# fired when I wasn't gesturing?"  Windows are derived from contiguous
+# ground-truth labels; label "ignore" marks transition time and is not scored.
+# ---------------------------------------------------------------------------
+
+EVENT_GRACE_S = 0.60   # a fire up to this long after the window ends still belongs to it
+IGNORE_LABELS = {"ignore", "transition"}
+
+
+def _ts(rec: Dict[str, Any]) -> float:
+    if "timestamp" in rec:
+        return float(rec["timestamp"])
+    return float(rec.get("frameIndex", 0)) / 30.0
+
+
+def extract_events(records: List[Dict[str, Any]]) -> List[Tuple[float, str]]:
+    """Discrete fired events: explicit firedIntent, plus pinch_dock state rising edges."""
+    events: List[Tuple[float, str]] = []
+    prev_pinch = False
+    for rec in records:
+        t = _ts(rec)
+        fired = str(rec.get("firedIntent", "")).lower()
+        if fired and fired in PREDICTED_TO_MACRO and PREDICTED_TO_MACRO[fired] != "idle":
+            events.append((t, PREDICTED_TO_MACRO[fired]))
+        pinch_now = str(rec.get("predictedIntent", "")).lower() == "pinch_dock"
+        if pinch_now and not prev_pinch:
+            events.append((t, "pinch_dock"))
+        prev_pinch = pinch_now
+    return events
+
+
+def build_windows(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    windows: List[Dict[str, Any]] = []
+    cur = None
+    for rec in records:
+        raw = str(rec.get("groundTruth", "idle")).lower()
+        t = _ts(rec)
+        if raw in IGNORE_LABELS:
+            macro = None
+        else:
+            macro = LABEL_TO_MACRO.get(raw, None)
+        key = (raw, macro)
+        if cur is None or cur["key"] != key:
+            if cur is not None:
+                windows.append(cur)
+            cur = {"key": key, "raw": raw, "macro": macro, "t0": t, "t1": t}
+        else:
+            cur["t1"] = t
+    if cur is not None:
+        windows.append(cur)
+    return windows
+
+
+def evaluate_events(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    records = sorted(records, key=_ts)
+    events = extract_events(records)
+    windows = build_windows(records)
+
+    classes = [c for c in CANONICAL_CLASSES if c != "idle"]
+    per_class = {c: {"windows": 0, "hit": 0, "miss": 0, "wrong": 0, "double_fire": 0, "latencies": []} for c in classes}
+    confusion: Dict[str, Dict[str, int]] = {c: defaultdict(int) for c in classes}   # true -> fired class / "none"
+    used = set()
+
+    for idx, w in enumerate(windows):
+        if w["macro"] is None or w["macro"] == "idle":
+            continue
+        cls = w["macro"]
+        lo, hi = w["t0"], w["t1"] + EVENT_GRACE_S
+        in_win = [(i, e) for i, e in enumerate(events) if lo <= e[0] <= hi]
+        for i, _ in in_win:
+            used.add(i)
+        pc = per_class[cls]
+        pc["windows"] += 1
+        correct = [e for _, e in in_win if e[1] == cls]
+        wrong = [e for _, e in in_win if e[1] != cls]
+        if correct:
+            pc["hit"] += 1
+            pc["latencies"].append(correct[0][0] - w["t0"])
+            confusion[cls][cls] += 1
+            if cls != "pinch_dock" and len(correct) > 1:
+                pc["double_fire"] += 1
+        else:
+            if wrong:
+                pc["wrong"] += 1
+                confusion[cls][wrong[0][1]] += 1
+            else:
+                pc["miss"] += 1
+                confusion[cls]["none"] += 1
+        # Any additional wrong-class fire alongside a correct one is a clash symptom
+        if correct and wrong:
+            for e in wrong:
+                confusion[cls][e[1]] += 1
+
+    # Idle: every fire not attributed to a gesture window and lying in idle time is a false trigger
+    idle_time = 0.0
+    idle_windows = []
+    for w in windows:
+        if w["macro"] == "idle":
+            idle_time += max(0.0, w["t1"] - w["t0"])
+            idle_windows.append(w)
+    false_triggers: Dict[str, int] = defaultdict(int)
+    for i, (t, c) in enumerate(events):
+        if i in used:
+            continue
+        if any(w["t0"] <= t <= w["t1"] + EVENT_GRACE_S for w in idle_windows):
+            false_triggers[c] += 1
+    total_false = sum(false_triggers.values())
+    far_per_min = (total_false / (idle_time / 60.0)) if idle_time > 0 else 0.0
+
+    return {
+        "per_class": per_class,
+        "confusion": {k: dict(v) for k, v in confusion.items()},
+        "idle_seconds": idle_time,
+        "idle_false_triggers": dict(false_triggers),
+        "idle_false_triggers_per_min": far_per_min,
+        "total_events": len(events),
+    }
+
+
+def print_event_report(res: Dict[str, Any]) -> None:
+    print("\n" + "=" * 78)
+    print(" EVENT-LEVEL REPORT (did the right action fire, once, and nothing else?) ".center(78))
+    print("=" * 78)
+    hdr = f"{'Class':<14} | {'Windows':>7} | {'Hit':>5} | {'Miss':>5} | {'Wrong':>5} | {'Recall':>7} | {'2x fire':>7} | {'Latency':>9}"
+    print(hdr)
+    print("-" * len(hdr))
+    for cls, pc in res["per_class"].items():
+        if pc["windows"] == 0:
+            continue
+        recall = pc["hit"] / pc["windows"]
+        lat = (sum(pc["latencies"]) / len(pc["latencies"]) * 1000.0) if pc["latencies"] else float("nan")
+        print(f"{cls:<14} | {pc['windows']:>7} | {pc['hit']:>5} | {pc['miss']:>5} | {pc['wrong']:>5} | {recall*100:>6.1f}% | {pc['double_fire']:>7} | {lat:>7.0f}ms")
+    print("-" * len(hdr))
+    print("\nWhat fired during each true gesture (rows = what you did, cols = what the app did):")
+    cols = [c for c in CANONICAL_CLASSES if c != "idle"] + ["none"]
+    print(f"{'true':<14} | " + " | ".join(f"{c[:10]:>10}" for c in cols))
+    for cls, row in res["confusion"].items():
+        if res["per_class"][cls]["windows"] == 0:
+            continue
+        print(f"{cls:<14} | " + " | ".join(f"{row.get(c, 0):>10}" for c in cols))
+    print(f"\nIdle time scored: {res['idle_seconds']:.0f}s")
+    print(f"False triggers while idle: {sum(res['idle_false_triggers'].values())} "
+          f"({res['idle_false_triggers_per_min']:.2f}/min)  by class: {res['idle_false_triggers']}")
+    print("=" * 78 + "\n")
+
+
+
 def generate_synthetic_benchmark() -> List[Dict[str, Any]]:
     """Generates synthetic test dataset verifying matrix computation."""
     records = []
@@ -262,7 +414,7 @@ def main():
     args = parser.parse_args()
 
     if args.test or not args.data:
-        print("[Notice] Running in Self-Test Mode with synthetic benchmark data.")
+        print("[Notice] Self-test: hand-made frames that check the SCORER ARITHMETIC only. These numbers say nothing about real recognition accuracy.")
         records = generate_synthetic_benchmark()
         results = evaluate_dataset(records)
         print_ascii_report(results, title="SYNTHETIC GESTURE RECOGNITION SELF-TEST")
@@ -292,7 +444,13 @@ def main():
         sys.exit(1)
 
     results = evaluate_dataset(records)
-    print_ascii_report(results, title=f"EVALUATION FOR: {os.path.basename(target_path)}")
+    has_events = any("firedIntent" in r for r in records)
+    if has_events:
+        print_event_report(evaluate_events(records))
+    else:
+        print("[Warning] Records have no 'firedIntent' (recorded with an older build). "
+              "Frame-level state accuracy under-reports instantaneous gestures such as swipes; re-record for event-level metrics.")
+    print_ascii_report(results, title=f"FRAME-LEVEL STATE REPORT: {os.path.basename(target_path)}")
 
     if args.output_json:
         with open(args.output_json, "w", encoding="utf-8") as f:

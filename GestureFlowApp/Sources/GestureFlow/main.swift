@@ -198,6 +198,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let scrollEngine = ScrollEngine()
 
     private var frameCount = 0
+    private var lastRecordedCommitSequence = 0
+    private var guidedSession: GuidedSession?
     private var fpsTimer = Date()
     private var lastHandSeenTime = Date()
     private var previousBimanualSpan: CGFloat = 0.0
@@ -240,6 +242,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 device: cameraManager.deviceName
             )
         }
+
+        if CommandLine.arguments.contains("--guided") {
+            startGuidedSession()
+        }
+    }
+
+    private func startGuidedSession() {
+        if !DatasetRecorder.shared.isRecording {
+            let df = DateFormatter()
+            df.dateFormat = "yyyyMMdd_HHmmss"
+            let defaultDir = ("~/Library/Application Support/GestureFlow/recordings" as NSString).expandingTildeInPath
+            let path = "\(defaultDir)/guided_\(df.string(from: Date())).jsonl"
+            guard DatasetRecorder.shared.startRecording(toPath: path) else { return }
+            appState.isRecordingDataset = true
+        }
+        let session = GuidedSession()
+        DatasetRecorder.shared.labelsLocked = true
+        session.onStep = { [weak self] label, display, index, total in
+            self?.appState.datasetLabel = label
+            self?.appState.setAction("[\(index + 1)/\(total)] \(display)")
+        }
+        session.onFinish = { [weak self] in
+            DatasetRecorder.shared.labelsLocked = false
+            DatasetRecorder.shared.stopRecording()
+            self?.appState.isRecordingDataset = false
+            self?.appState.setAction("Hoàn tất phiên thu dữ liệu")
+            self?.guidedSession = nil
+        }
+        guidedSession = session
+        print("[GuidedSession] Starting: ~\(Int(session.totalDuration / 60)) min. Follow the voice cues.")
+        // Short lead-in so the user can position themselves in front of the camera.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { session.start() }
     }
 
     private func setupKeyboardMonitoring() {
@@ -714,12 +748,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             if DatasetRecorder.shared.isRecording {
+                let seq = IntentArbiter.shared.commitSequence
+                let fired: String = (seq != self.lastRecordedCommitSequence) ? IntentArbiter.shared.lastCommitted.rawValue : ""
+                self.lastRecordedCommitSequence = seq
                 DatasetRecorder.shared.recordFrame(
                     frameIndex: self.frameCount,
                     timestamp: pts.seconds,
                     primary: landmarks,
                     secondary: secondaryLandmarks,
-                    predictedIntent: IntentArbiter.shared.currentIntent.rawValue
+                    predictedIntent: IntentArbiter.shared.currentIntent.rawValue,
+                    firedIntent: fired
                 )
             }
 
