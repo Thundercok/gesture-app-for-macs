@@ -158,6 +158,58 @@ final class GestureEngine {
         let dt = min(0.1, max(0.001, now.timeIntervalSince(lastProcessTime)))
         lastProcessTime = now
 
+        updateSuppressionState(landmarks: landmarks)
+
+        // 1. Handle Cooldown
+        if case .cooldown(let until) = state {
+            if now < until {
+                return
+            } else {
+                state = .standby
+                onArmedStatus?(false)
+                onScanProgress?(0.0)
+            }
+        }
+
+        guard let lm = landmarks, lm.isRaisedHand else {
+            handleHandLost(now: now, dt: dt)
+            return
+        }
+
+        updateHandKinematics(lm: lm, now: now, dt: dt)
+
+        let nowTimestamp = now.timeIntervalSinceReferenceDate
+        let rawTrackingPoint = CGPoint(x: 1.0 - lm.indexTip.x, y: lm.indexTip.y)
+        let tune = GestureTuning.current
+
+        if evaluateSwipe(lm: lm, nowTimestamp: nowTimestamp, rawTrackingPoint: rawTrackingPoint, tune: tune) {
+            return
+        }
+
+        switch state {
+        case .standby:
+            evaluateStandby(lm: lm, now: now, nowTimestamp: nowTimestamp, dt: dt, tune: tune)
+        case .armed(let expiresAt):
+            evaluateArmed(lm: lm, now: now, nowTimestamp: nowTimestamp, expiresAt: expiresAt, tune: tune)
+        case .engaged(let anchor, let selectedIndex, let appCount, let openTime, let lastStableIndex, let stableSince):
+            evaluateDockScrub(
+                lm: lm,
+                now: now,
+                nowTimestamp: nowTimestamp,
+                dt: dt,
+                anchor: anchor,
+                selectedIndex: selectedIndex,
+                appCount: appCount,
+                openTime: openTime,
+                lastStableIndex: lastStableIndex,
+                stableSince: stableSince
+            )
+        case .cooldown:
+            break
+        }
+    }
+
+    private func updateSuppressionState(landmarks: HandLandmarks?) {
         let rawReason = landmarks != nil ? evaluateIntentionalityGates(landmarks: landmarks!) : nil
 
         // Immediate safety latch for face proximity; 3-frame debounce for continuous angle/depth gates
@@ -181,29 +233,11 @@ final class GestureEngine {
                 onSuppressStatus?(activeSuppressReason)
             }
         }
+    }
 
-        // 1. Handle Cooldown
-        if case .cooldown(let until) = state {
-            if now < until {
-                return
-            } else {
-                state = .standby
-                onArmedStatus?(false)
-                onScanProgress?(0.0)
-            }
-        }
-
-        guard let lm = landmarks, lm.isRaisedHand else {
-            handleHandLost(now: now, dt: dt)
-            return
-        }
-
+    private func updateHandKinematics(lm: HandLandmarks, now: Date, dt: Double) {
         lastHandSeenTime = now
-        let isPinching = lm.isPinching
-        let currentPoint = lm.pinchCenter
-
         let nowTimestamp = now.timeIntervalSinceReferenceDate
-        let rawTrackingPoint = CGPoint(x: 1.0 - lm.indexTip.x, y: lm.indexTip.y)
 
         // Calculate hand movement speed to reject spurious pinch during transit
         if lastCentroid != .zero {
@@ -213,15 +247,13 @@ final class GestureEngine {
         }
         lastCentroid = lm.handCentroid
 
-        if isPinching {
+        if lm.isPinching {
             lastPinchTime = nowTimestamp
         }
 
-        let tune = GestureTuning.current
-
         // Open hand stability and dwell tracking
         let isOpenFingers = (lm.fingerCount >= 3) || lm.isOpenHand || lm.isStrictOpenPalm
-        if isOpenFingers && !isPinching {
+        if isOpenFingers && !lm.isPinching {
             stableOpenFrames += 1
             if openPalmSince == nil {
                 openPalmSince = nowTimestamp
@@ -230,321 +262,322 @@ final class GestureEngine {
             stableOpenFrames = 0
             openPalmSince = nil
         }
+    }
 
-        let palmDwell = nowTimestamp - (openPalmSince ?? nowTimestamp)
-        let isPalmDwellSatisfied = (stableOpenFrames >= 3) && (palmDwell >= tune.openPalmDwellSeconds)
-
-        // Evaluate Trackpad Spatial Swipes (Left/Right Space, Up Mission Control, Down Desktop)
-        // Strict intentionality & mutual exclusion:
-        // 1. Hand MUST have open/extended fingers stably for at least 3 frames + dwell time
-        // 2. Must not have pinched recently (within postPinchSwipeGuardSeconds)
-        // 3. Engine must be in standby state
-        // 4. IntentArbiter allows .swipe
+    private func evaluateSwipe(
+        lm: HandLandmarks,
+        nowTimestamp: TimeInterval,
+        rawTrackingPoint: CGPoint,
+        tune: GestureTuning
+    ) -> Bool {
         let isStandbyState: Bool = {
             if case .standby = state { return true }
             return false
         }()
         let canSwipe = arbiter.canBegin(intent: .swipe, now: nowTimestamp)
-        var isEligibleForSwipe = false
-        if activeSuppressReason == nil && isStandbyState && !isPinching {
-            if lm.isInInteractionRange && isOpenFingers && isPalmDwellSatisfied {
-                if (nowTimestamp - lastPinchTime) > tune.postPinchSwipeGuardSeconds && canSwipe {
-                    isEligibleForSwipe = true
-                }
-            }
-        }
+        let isOpenFingers = (lm.fingerCount >= 3) || lm.isOpenHand || lm.isStrictOpenPalm
+        let palmDwell = nowTimestamp - (openPalmSince ?? nowTimestamp)
+        let isPalmDwellSatisfied = (stableOpenFrames >= 3) && (palmDwell >= tune.openPalmDwellSeconds)
+        let isPinchGuardClear = (nowTimestamp - lastPinchTime) > tune.postPinchSwipeGuardSeconds
 
-        if isEligibleForSwipe {
-            swipeHistory.append(SwipeSample(point: rawTrackingPoint, timestamp: nowTimestamp))
-            if swipeHistory.count > 14 {
-                swipeHistory.removeFirst()
-            }
+        let isInteractionValid = lm.isInInteractionRange && isOpenFingers && isPalmDwellSatisfied
+        let isGatingClear = (activeSuppressReason == nil) && isStandbyState && !lm.isPinching
+        let isEligibleForSwipe = isGatingClear && isInteractionValid && isPinchGuardClear && canSwipe
 
-            if nowTimestamp > swipeCooldownUntil && swipeHistory.count >= 4 {
-                for offset in 3...min(7, swipeHistory.count - 1) {
-                    let oldSample = swipeHistory[swipeHistory.count - 1 - offset]
-                    let sampleDt = nowTimestamp - oldSample.timestamp
-                    guard sampleDt >= 0.035 && sampleDt <= 0.180 else { continue }
-
-                    let dx = rawTrackingPoint.x - oldSample.point.x
-                    let dy = rawTrackingPoint.y - oldSample.point.y
-                    let vx = Double(dx) / sampleDt
-                    let vy = Double(dy) / sampleDt
-                    let absDx = abs(dx)
-                    let absDy = abs(dy)
-                    let absVx = abs(vx)
-                    let absVy = abs(vy)
-
-                    // 1. Horizontal Swipes (Switch Space Left / Right) - deliberate displacement required
-                    if absDx >= tune.swipeMinDisplacement && absVx >= tune.swipeMinVelocity && absDx >= (absDy * tune.swipeAxisDominance) {
-                        arbiter.claim(intent: .swipe)
-                        if dx < 0 {
-                            // Swiped physical Left -> switch to space on the right (like 3-finger trackpad swipe left)
-                            actionSink.switchSpace(.right)
-                            actionSink.playFeedback(named: "Pop")
-                            actionSink.playHaptic()
-                            onAction?("Chuyển Space Phải →")
-                        } else {
-                            // Swiped physical Right -> switch to space on the left
-                            actionSink.switchSpace(.left)
-                            actionSink.playFeedback(named: "Pop")
-                            actionSink.playHaptic()
-                            onAction?("Chuyển Space Trái ←")
-                        }
-                        lastSwipeTime = nowTimestamp
-                        swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
-                        swipeHistory.removeAll(keepingCapacity: true)
-                        let swipeAction = dx < 0 ? "swipe_left" : "swipe_right"
-                        arbiter.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
-                        return
-                    }
-
-                    // 2. Vertical Swipes (Mission Control / Show Desktop)
-                    if absDy >= tune.swipeMinDisplacement && absVy >= tune.swipeMinVelocity && absDy >= (absDx * tune.swipeAxisDominance) {
-                        arbiter.claim(intent: .swipe)
-                        if dy > 0 {
-                            // Swiped physical Up -> Mission Control (like 3-finger trackpad swipe up)
-                            actionSink.triggerMissionControl()
-                            actionSink.playFeedback(named: "Glass")
-                            actionSink.playHaptic()
-                            onAction?("Mission Control ↑")
-                        } else {
-                            // Swiped physical Down -> Show Desktop (like 3-finger trackpad swipe down)
-                            actionSink.showDesktop()
-                            actionSink.playFeedback(named: "Tink")
-                            actionSink.playHaptic()
-                            onAction?("Hiện Desktop ↓")
-                        }
-                        lastSwipeTime = nowTimestamp
-                        swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
-                        swipeHistory.removeAll(keepingCapacity: true)
-                        let swipeAction = dy > 0 ? "swipe_up" : "swipe_down"
-                        arbiter.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
-                        return
-                    }
-                }
-            }
-        } else {
+        guard isEligibleForSwipe else {
             swipeHistory.removeAll(keepingCapacity: true)
+            return false
         }
 
-        switch state {
-        case .standby:
-            onArmedStatus?(false)
+        swipeHistory.append(SwipeSample(point: rawTrackingPoint, timestamp: nowTimestamp))
+        if swipeHistory.count > 14 {
+            swipeHistory.removeFirst()
+        }
 
-            // Instant Pinch to open Dock Switcher (requires stationary hand and IntentArbiter clearance)
-            let notInSwipeCooldown = (nowTimestamp - lastSwipeTime) > 0.40
-            let canPinchDock = arbiter.canBegin(intent: .pinchDock, now: nowTimestamp)
-            let isCalmHand = handSpeed < tune.pinchCalmHandSpeed
+        guard nowTimestamp > swipeCooldownUntil && swipeHistory.count >= 4 else {
+            return false
+        }
 
-            let shouldOpenDock = isPinching &&
-                                 lm.isInInteractionRange &&
-                                 (activeSuppressReason == nil) &&
-                                 notInSwipeCooldown &&
-                                 canPinchDock &&
-                                 isCalmHand
+        for offset in 3...min(7, swipeHistory.count - 1) {
+            let oldSample = swipeHistory[swipeHistory.count - 1 - offset]
+            let sampleDt = nowTimestamp - oldSample.timestamp
+            guard sampleDt >= 0.035 && sampleDt <= 0.180 else { continue }
 
-            if shouldOpenDock {
-                let apps = actionSink.getRecentApps()
-                if !apps.isEmpty {
-                    arbiter.claim(intent: .pinchDock)
-                    let initialIndex = (apps.count > 1) ? 1 : 0
+            let dx = rawTrackingPoint.x - oldSample.point.x
+            let dy = rawTrackingPoint.y - oldSample.point.y
+            let vx = Double(dx) / sampleDt
+            let vy = Double(dy) / sampleDt
+            let absDx = abs(dx)
+            let absDy = abs(dy)
+            let absVx = abs(vx)
+            let absVy = abs(vy)
+
+            // 1. Horizontal Swipes (Switch Space Left / Right)
+            let isHorizontalDominant = absDx >= (absDy * tune.swipeAxisDominance)
+            let hasHorizontalSpeed = absVx >= tune.swipeMinVelocity
+            let hasHorizontalDisplacement = absDx >= tune.swipeMinDisplacement
+            if hasHorizontalDisplacement && hasHorizontalSpeed && isHorizontalDominant {
+                arbiter.claim(intent: .swipe)
+                if dx < 0 {
+                    actionSink.switchSpace(.right)
                     actionSink.playFeedback(named: "Pop")
-                    TelemetryLogger.shared.log(
-                        action: "dock_open",
-                        reason: nil,
-                        chargeLevel: 1.0,
-                        handCentroid: lm.handCentroid
-                    )
-                    onDockOpen?(apps, initialIndex)
-                    state = .engaged(
-                        anchor: currentPoint,
-                        selectedIndex: initialIndex,
-                        appCount: apps.count,
-                        openTime: now,
-                        lastStableIndex: initialIndex,
-                        stableSince: now
-                    )
-                    return
+                    actionSink.playHaptic()
+                    onAction?("Chuyển Space Phải →")
+                } else {
+                    actionSink.switchSpace(.left)
+                    actionSink.playFeedback(named: "Pop")
+                    actionSink.playHaptic()
+                    onAction?("Chuyển Space Trái ←")
                 }
+                lastSwipeTime = nowTimestamp
+                swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
+                swipeHistory.removeAll(keepingCapacity: true)
+                let swipeAction = dx < 0 ? "swipe_left" : "swipe_right"
+                arbiter.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
+                return true
             }
 
+            // 2. Vertical Swipes (Mission Control / Show Desktop)
+            let isVerticalDominant = absDy >= (absDx * tune.swipeAxisDominance)
+            let hasVerticalSpeed = absVy >= tune.swipeMinVelocity
+            let hasVerticalDisplacement = absDy >= tune.swipeMinDisplacement
+            if hasVerticalDisplacement && hasVerticalSpeed && isVerticalDominant {
+                arbiter.claim(intent: .swipe)
+                if dy > 0 {
+                    actionSink.triggerMissionControl()
+                    actionSink.playFeedback(named: "Glass")
+                    actionSink.playHaptic()
+                    onAction?("Mission Control ↑")
+                } else {
+                    actionSink.showDesktop()
+                    actionSink.playFeedback(named: "Tink")
+                    actionSink.playHaptic()
+                    onAction?("Hiện Desktop ↓")
+                }
+                lastSwipeTime = nowTimestamp
+                swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
+                swipeHistory.removeAll(keepingCapacity: true)
+                let swipeAction = dy > 0 ? "swipe_up" : "swipe_down"
+                arbiter.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
+                return true
+            }
+        }
+        return false
+    }
 
-            // Intentionality Gates in Standby:
-            // Drain charge gracefully under suppression instead of instant zero on single-frame noise
-            if let reason = activeSuppressReason {
-                logSuppression(reason: reason, centroid: lm.handCentroid)
-                chargeLevel = max(0.0, chargeLevel - CGFloat(dt * 2.0))
-                onScanProgress?(chargeLevel)
+    private func evaluatePinchDock(lm: HandLandmarks, now: Date) -> Bool {
+        let apps = actionSink.getRecentApps()
+        guard !apps.isEmpty else { return false }
+
+        arbiter.claim(intent: .pinchDock)
+        let initialIndex = (apps.count > 1) ? 1 : 0
+        actionSink.playFeedback(named: "Pop")
+        TelemetryLogger.shared.log(
+            action: "dock_open",
+            reason: nil,
+            chargeLevel: 1.0,
+            handCentroid: lm.handCentroid
+        )
+        onDockOpen?(apps, initialIndex)
+        state = .engaged(
+            anchor: lm.pinchCenter,
+            selectedIndex: initialIndex,
+            appCount: apps.count,
+            openTime: now,
+            lastStableIndex: initialIndex,
+            stableSince: now
+        )
+        return true
+    }
+
+    private func evaluateStandby(
+        lm: HandLandmarks,
+        now: Date,
+        nowTimestamp: TimeInterval,
+        dt: Double,
+        tune: GestureTuning
+    ) {
+        onArmedStatus?(false)
+
+        let notInSwipeCooldown = (nowTimestamp - lastSwipeTime) > 0.40
+        let canPinchDock = arbiter.canBegin(intent: .pinchDock, now: nowTimestamp)
+        let isCalmHand = handSpeed < tune.pinchCalmHandSpeed
+        let hasClearance = (activeSuppressReason == nil) && notInSwipeCooldown && canPinchDock
+        let shouldOpenDock = lm.isPinching && lm.isInInteractionRange && hasClearance && isCalmHand
+
+        if shouldOpenDock {
+            if evaluatePinchDock(lm: lm, now: now) {
                 return
             }
+        }
 
-            // ONLY accumulate charge when hand is explicitly in flat open palm pose AND within intentional distance!
-            let isReadyToArm = lm.isStrictOpenPalm && lm.isInInteractionRange
-
-            if isReadyToArm {
-                chargeLevel = min(1.0, chargeLevel + CGFloat(dt / 0.28))
-            } else {
-                chargeLevel = max(0.0, chargeLevel - CGFloat(dt * 1.5))
-            }
+        // Intentionality Gates in Standby:
+        if let reason = activeSuppressReason {
+            logSuppression(reason: reason, centroid: lm.handCentroid)
+            chargeLevel = max(0.0, chargeLevel - CGFloat(dt * 2.0))
             onScanProgress?(chargeLevel)
+            return
+        }
 
-            if chargeLevel >= 1.0 {
-                chargeLevel = 0.0
-                TelemetryLogger.shared.log(
-                    action: "trigger",
-                    reason: nil,
-                    chargeLevel: 1.0,
-                    handCentroid: lm.handCentroid
-                )
-                actionSink.playFeedback(named: "Glass")
-                state = .armed(expiresAt: now.addingTimeInterval(4.0))
-                onArmedStatus?(true)
-                onScanProgress?(1.0)
-            }
+        let isReadyToArm = lm.isStrictOpenPalm && lm.isInInteractionRange
 
-        case .armed(let expiresAt):
-            if now > expiresAt {
+        if isReadyToArm {
+            chargeLevel = min(1.0, chargeLevel + CGFloat(dt / 0.28))
+        } else {
+            chargeLevel = max(0.0, chargeLevel - CGFloat(dt * 1.5))
+        }
+        onScanProgress?(chargeLevel)
+
+        if chargeLevel >= 1.0 {
+            chargeLevel = 0.0
+            TelemetryLogger.shared.log(
+                action: "trigger",
+                reason: nil,
+                chargeLevel: 1.0,
+                handCentroid: lm.handCentroid
+            )
+            actionSink.playFeedback(named: "Glass")
+            state = .armed(expiresAt: now.addingTimeInterval(4.0))
+            onArmedStatus?(true)
+            onScanProgress?(1.0)
+        }
+    }
+
+    private func evaluateArmed(
+        lm: HandLandmarks,
+        now: Date,
+        nowTimestamp: TimeInterval,
+        expiresAt: Date,
+        tune: GestureTuning
+    ) {
+        if now > expiresAt {
+            state = .standby
+            onArmedStatus?(false)
+            onScanProgress?(0.0)
+            return
+        }
+
+        // Gating in Armed State:
+        if let reason = activeSuppressReason {
+            if reason == .faceProximity {
+                logSuppression(reason: reason, centroid: lm.handCentroid)
+                forceDischarge()
                 state = .standby
                 onArmedStatus?(false)
                 onScanProgress?(0.0)
                 return
             }
+        }
 
-            // Gating in Armed State:
-            // Only face proximity disarms when armed (e.g. scratching face/chin).
-            if let reason = activeSuppressReason {
-                if reason == .faceProximity {
-                    logSuppression(reason: reason, centroid: lm.handCentroid)
-                    forceDischarge()
-                    state = .standby
-                    onArmedStatus?(false)
-                    onScanProgress?(0.0)
-                    return
-                }
+        onArmedStatus?(true)
+        onScanProgress?(1.0)
+
+        let canPinchArmed = arbiter.canBegin(intent: .pinchDock, now: nowTimestamp)
+        let isCalmHand = handSpeed < tune.pinchCalmHandSpeed
+        if lm.isPinching && canPinchArmed && isCalmHand {
+            if evaluatePinchDock(lm: lm, now: now) {
+                return
+            }
+        } else if lm.isOpenHand {
+            state = .armed(expiresAt: now.addingTimeInterval(4.0))
+        }
+    }
+
+    private func evaluateDockScrub(
+        lm: HandLandmarks,
+        now: Date,
+        nowTimestamp: TimeInterval,
+        dt: Double,
+        anchor: CGPoint,
+        selectedIndex: Int,
+        appCount: Int,
+        openTime: Date,
+        lastStableIndex: Int,
+        stableSince: Date
+    ) {
+        onArmedStatus?(true)
+
+        let currentPoint = lm.pinchCenter
+        let dwellTime = now.timeIntervalSince(openTime)
+        let rawDx = currentPoint.x - anchor.x
+        let dy = currentPoint.y - anchor.y
+
+        // Instant Cmd+Tab Quick Toggle:
+        let isInDeadzone = abs(rawDx) <= deadzoneRadius
+        let allowRelease = (!lm.isPinching) && (isInDeadzone || dwellTime > 0.16)
+
+        // 2. ROCK-SOLID PINCH RELEASE
+        if allowRelease {
+            let elapsedSinceChange = now.timeIntervalSince(stableSince)
+            let commitIndex: Int
+            if elapsedSinceChange < 0.12 && lastStableIndex != selectedIndex {
+                commitIndex = lastStableIndex
+            } else {
+                commitIndex = selectedIndex
             }
 
-            onArmedStatus?(true)
-            onScanProgress?(1.0)
+            onDockSelectIndex?(commitIndex, .zero)
+            commitSwitch(centroid: currentPoint)
+            arbiter.commitAction(gesture: .pinchDock, action: "pinch_dock", cooldown: 0.38, now: nowTimestamp)
+            lastDx = 0.0
+            filteredVelocity = 0.0
+            state = .cooldown(until: now.addingTimeInterval(0.30))
+            return
+        }
 
-            let canPinchArmed = arbiter.canBegin(intent: .pinchDock, now: nowTimestamp)
-            if isPinching && canPinchArmed && handSpeed < tune.pinchCalmHandSpeed {
-                let apps = actionSink.getRecentApps()
-                guard !apps.isEmpty else { return }
+        // Velocity-Assisted Scrubbing (Flick-to-Switch):
+        let instVel = Double(abs(rawDx - lastDx)) / dt
+        lastDx = rawDx
+        filteredVelocity = 0.70 * filteredVelocity + 0.30 * instVel
 
-                arbiter.claim(intent: .pinchDock)
-                // Index 1 is the previous app (instant Cmd+Tab toggle target)
-                let initialIndex = (apps.count > 1) ? 1 : 0
-                actionSink.playFeedback(named: "Pop")
-                TelemetryLogger.shared.log(
-                    action: "dock_open",
-                    reason: nil,
-                    chargeLevel: 1.0,
-                    handCentroid: lm.handCentroid
-                )
-                onDockOpen?(apps, initialIndex)
+        let velocityMultiplier: CGFloat
+        if filteredVelocity > 0.32 {
+            velocityMultiplier = min(2.4, CGFloat(1.0 + 1.8 * (filteredVelocity - 0.32)))
+        } else {
+            velocityMultiplier = 1.0
+        }
+        let effectiveDx = (rawDx >= 0 ? 1.0 : -1.0) * (abs(rawDx) * velocityMultiplier)
+        let tiltDelta = CGSize(width: rawDx, height: dy)
 
+        // 3. CONTINUOUS HORIZONTAL SCRUBBING WITH TUNED DETENT HYSTERESIS
+        if appCount > 0 {
+            let rawIndexFloat: Double
+            if effectiveDx > deadzoneRadius {
+                rawIndexFloat = 1.0 + Double((effectiveDx - deadzoneRadius) / stepWidth)
+            } else if effectiveDx < -deadzoneRadius {
+                rawIndexFloat = 1.0 - Double((-effectiveDx - deadzoneRadius) / stepWidth)
+            } else {
+                rawIndexFloat = (appCount > 1) ? 1.0 : 0.0
+            }
+
+            // Schmitt trigger deadband (0.55 detent threshold) to prevent boundary jitter
+            var targetIndex = selectedIndex
+            if rawIndexFloat > Double(selectedIndex) + 0.55 {
+                targetIndex = min(appCount - 1, Int(floor(rawIndexFloat + 0.45)))
+            } else if rawIndexFloat < Double(selectedIndex) - 0.55 {
+                targetIndex = max(0, Int(ceil(rawIndexFloat - 0.45)))
+            }
+
+            // Center deadzone cleanly stabilizes index 1 (previous app toggle)
+            if abs(rawDx) <= deadzoneRadius {
+                targetIndex = (appCount > 1) ? 1 : 0
+            }
+
+            if targetIndex != selectedIndex {
+                actionSink.playFeedback(named: "Tink")
+                onDockSelectIndex?(targetIndex, tiltDelta)
                 state = .engaged(
-                    anchor: currentPoint,
-                    selectedIndex: initialIndex,
-                    appCount: apps.count,
-                    openTime: now,
-                    lastStableIndex: initialIndex,
+                    anchor: anchor,
+                    selectedIndex: targetIndex,
+                    appCount: appCount,
+                    openTime: openTime,
+                    lastStableIndex: selectedIndex,
                     stableSince: now
                 )
-            } else if lm.isOpenHand {
-                // Prolong armed state while user comfortably presents hand
-                state = .armed(expiresAt: now.addingTimeInterval(4.0))
-            }
-
-        case .engaged(let anchor, let selectedIndex, let appCount, let openTime, let lastStableIndex, let stableSince):
-            onArmedStatus?(true)
-
-            let dwellTime = now.timeIntervalSince(openTime)
-            let rawDx = currentPoint.x - anchor.x
-            let dy = currentPoint.y - anchor.y
-
-            // Instant Cmd+Tab Quick Toggle:
-            // If the hand stayed inside the resting deadzone, allow immediate pinch release!
-            let isInDeadzone = abs(rawDx) <= deadzoneRadius
-            let allowRelease = (!isPinching) && (isInDeadzone || dwellTime > 0.16)
-
-            // 2. ROCK-SOLID PINCH RELEASE
-            if allowRelease {
-                let elapsedSinceChange = now.timeIntervalSince(stableSince)
-                let commitIndex: Int
-                if elapsedSinceChange < 0.12 && lastStableIndex != selectedIndex {
-                    commitIndex = lastStableIndex
-                } else {
-                    commitIndex = selectedIndex
-                }
-
-                onDockSelectIndex?(commitIndex, .zero)
-                commitSwitch(centroid: currentPoint)
-                arbiter.commitAction(gesture: .pinchDock, action: "pinch_dock", cooldown: 0.38, now: nowTimestamp)
-                lastDx = 0.0
-                filteredVelocity = 0.0
-                state = .cooldown(until: now.addingTimeInterval(0.30))
                 return
             }
 
-            // Velocity-Assisted Scrubbing (Flick-to-Switch):
-            let instVel = Double(abs(rawDx - lastDx)) / dt
-            lastDx = rawDx
-            filteredVelocity = 0.70 * filteredVelocity + 0.30 * instVel
-
-            let velocityMultiplier: CGFloat
-            if filteredVelocity > 0.32 {
-                velocityMultiplier = min(2.4, CGFloat(1.0 + 1.8 * (filteredVelocity - 0.32)))
-            } else {
-                velocityMultiplier = 1.0
-            }
-            let effectiveDx = (rawDx >= 0 ? 1.0 : -1.0) * (abs(rawDx) * velocityMultiplier)
-            let tiltDelta = CGSize(width: rawDx, height: dy)
-
-            // 3. CONTINUOUS HORIZONTAL SCRUBBING WITH TUNED DETENT HYSTERESIS
-            if appCount > 0 {
-                let rawIndexFloat: Double
-                if effectiveDx > deadzoneRadius {
-                    rawIndexFloat = 1.0 + Double((effectiveDx - deadzoneRadius) / stepWidth)
-                } else if effectiveDx < -deadzoneRadius {
-                    rawIndexFloat = 1.0 - Double((-effectiveDx - deadzoneRadius) / stepWidth)
-                } else {
-                    rawIndexFloat = (appCount > 1) ? 1.0 : 0.0
-                }
-
-                // Schmitt trigger deadband (0.55 detent threshold) to prevent boundary jitter
-                var targetIndex = selectedIndex
-                if rawIndexFloat > Double(selectedIndex) + 0.55 {
-                    targetIndex = min(appCount - 1, Int(floor(rawIndexFloat + 0.45)))
-                } else if rawIndexFloat < Double(selectedIndex) - 0.55 {
-                    targetIndex = max(0, Int(ceil(rawIndexFloat - 0.45)))
-                }
-
-                // Center deadzone cleanly stabilizes index 1 (previous app toggle)
-                if abs(rawDx) <= deadzoneRadius {
-                    targetIndex = (appCount > 1) ? 1 : 0
-                }
-
-                if targetIndex != selectedIndex {
-                    actionSink.playFeedback(named: "Tink")
-                    onDockSelectIndex?(targetIndex, tiltDelta)
-                    state = .engaged(
-                        anchor: anchor,
-                        selectedIndex: targetIndex,
-                        appCount: appCount,
-                        openTime: openTime,
-                        lastStableIndex: selectedIndex,
-                        stableSince: now
-                    )
-                    return
-                }
-
-                onDockSelectIndex?(selectedIndex, tiltDelta)
-            }
-
-        case .cooldown:
-            break
+            onDockSelectIndex?(selectedIndex, tiltDelta)
         }
     }
 
