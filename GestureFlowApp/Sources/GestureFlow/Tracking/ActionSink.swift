@@ -86,9 +86,17 @@ final class RecordingActionSink: ActionSink {
     private var momentumActive: Bool = false
     private let clock: Clock?
 
-    init(clock: Clock? = nil, mockApps: [AppItem] = []) {
+    init(clock: Clock? = nil, mockApps: [AppItem]? = nil) {
         self.clock = clock
-        self.mockApps = mockApps
+        if let apps = mockApps {
+            self.mockApps = apps
+        } else {
+            let app = NSRunningApplication.current
+            self.mockApps = [
+                AppItem(id: 101, name: "Finder", icon: NSImage(), runningApp: app),
+                AppItem(id: 102, name: "Safari", icon: NSImage(), runningApp: app)
+            ]
+        }
     }
 
     func setMockApps(_ apps: [AppItem]) {

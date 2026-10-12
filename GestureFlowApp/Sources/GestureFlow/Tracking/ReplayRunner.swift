@@ -105,6 +105,7 @@ final class ReplayRunner {
 
         let decoder = JSONDecoder()
         let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
 
         // 5. Process lines
         inputContent.enumerateLines { line, stop in

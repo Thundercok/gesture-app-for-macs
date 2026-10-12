@@ -668,6 +668,7 @@ def print_incidents_report(results: Dict[str, Any], title: str = "PASSIVE FLIGHT
 def main():
     parser = argparse.ArgumentParser(description="Evaluate GestureFlow gesture recognition accuracy and confusion matrix.")
     parser.add_argument("--data", "-d", help="Path to recorded JSONL landmark dataset file or directory")
+    parser.add_argument("--replayed", "-r", help="Path to replayed JSONL file produced by --replay (merges with ground truth from --data)")
     parser.add_argument("--incidents", "-i", help="Path to incident recording directory (evaluates misfire rate and flight recorder logs)")
     parser.add_argument("--test", action="store_true", help="Run self-test using synthetic benchmark data")
     parser.add_argument("--output-json", "-o", help="Optional output JSON path for evaluation results")
@@ -683,7 +684,30 @@ def main():
             print(f"Saved JSON metrics to: {args.output_json}")
         return
 
-    if args.test or not args.data:
+    if args.replayed:
+        replayed_path = os.path.expanduser(args.replayed)
+        if not os.path.exists(replayed_path):
+            print(f"Error: Replayed path '{replayed_path}' does not exist.", file=sys.stderr)
+            sys.exit(1)
+        replayed_records = load_dataset(replayed_path)
+
+        if args.data:
+            data_path = os.path.expanduser(args.data)
+            if not os.path.exists(data_path):
+                print(f"Error: Data path '{data_path}' does not exist.", file=sys.stderr)
+                sys.exit(1)
+            gt_records = load_dataset(data_path)
+            records = []
+            for i in range(min(len(gt_records), len(replayed_records))):
+                merged = dict(gt_records[i])
+                merged["firedIntent"] = replayed_records[i].get("firedIntent", "")
+                merged["firedAction"] = replayed_records[i].get("firedAction", "")
+                if "predictedIntent" in replayed_records[i]:
+                    merged["predictedIntent"] = replayed_records[i]["predictedIntent"]
+                records.append(merged)
+        else:
+            records = replayed_records
+    elif args.test or not args.data:
         print("[Notice] Self-test: hand-made frames that check the SCORER ARITHMETIC only. These numbers say nothing about real recognition accuracy.")
         records = generate_synthetic_benchmark()
         results = evaluate_dataset(records)
@@ -692,25 +716,25 @@ def main():
             with open(args.output_json, "w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2)
         return
-
-    target_path = os.path.expanduser(args.data)
-    records = []
-
-    if os.path.isdir(target_path):
-        for root, _, files in os.walk(target_path):
-            for file in sorted(files):
-                if file.endswith(".jsonl"):
-                    full_path = os.path.join(root, file)
-                    print(f"Loading: {full_path}")
-                    records.extend(load_dataset(full_path))
-    elif os.path.isfile(target_path):
-        records = load_dataset(target_path)
     else:
-        print(f"Error: Path '{target_path}' does not exist.", file=sys.stderr)
-        sys.exit(1)
+        target_path = os.path.expanduser(args.data)
+        records = []
+
+        if os.path.isdir(target_path):
+            for root, _, files in os.walk(target_path):
+                for file in sorted(files):
+                    if file.endswith(".jsonl"):
+                        full_path = os.path.join(root, file)
+                        print(f"Loading: {full_path}")
+                        records.extend(load_dataset(full_path))
+        elif os.path.isfile(target_path):
+            records = load_dataset(target_path)
+        else:
+            print(f"Error: Path '{target_path}' does not exist.", file=sys.stderr)
+            sys.exit(1)
 
     if not records:
-        print(f"Error: No valid JSONL records found in '{target_path}'.", file=sys.stderr)
+        print(f"Error: No valid JSONL records found.", file=sys.stderr)
         sys.exit(1)
 
     results = evaluate_dataset(records)
@@ -720,7 +744,8 @@ def main():
     else:
         print("[Warning] Records have no 'firedIntent' (recorded with an older build). "
               "Frame-level state accuracy under-reports instantaneous gestures such as swipes; re-record for event-level metrics.")
-    print_ascii_report(results, title=f"FRAME-LEVEL STATE REPORT: {os.path.basename(target_path)}")
+    source_name = os.path.basename(args.data or args.replayed or "replayed")
+    print_ascii_report(results, title=f"FRAME-LEVEL STATE REPORT: {source_name}")
 
     if args.output_json:
         with open(args.output_json, "w", encoding="utf-8") as f:

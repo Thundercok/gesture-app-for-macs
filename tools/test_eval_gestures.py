@@ -168,6 +168,32 @@ class IncidentEvaluationTests(unittest.TestCase):
             self.assertIsNotNone(res["wilson_interval"])
             self.assertEqual(res["per_intent_misfires"].get("swipe"), 1)
 
+    def test_replayed_merging_with_data(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w+", suffix=".jsonl", delete=False) as f_gt:
+            f_gt.write('{"timestamp":1.0,"groundTruth":"swipe_left","predictedIntent":"idle","firedAction":""}\n')
+            f_gt.write('{"timestamp":1.1,"groundTruth":"idle","predictedIntent":"idle","firedAction":""}\n')
+            gt_path = f_gt.name
+        with tempfile.NamedTemporaryFile("w+", suffix=".jsonl", delete=False) as f_rep:
+            f_rep.write('{"timestamp":1.0,"groundTruth":"unlabeled","predictedIntent":"swipe","firedAction":"swipe_left","firedIntent":"swipe"}\n')
+            f_rep.write('{"timestamp":1.1,"groundTruth":"unlabeled","predictedIntent":"idle","firedAction":"","firedIntent":""}\n')
+            rep_path = f_rep.name
+        try:
+            gt_records = ev.load_dataset(gt_path)
+            rep_records = ev.load_dataset(rep_path)
+            merged = []
+            for i in range(min(len(gt_records), len(rep_records))):
+                item = dict(gt_records[i])
+                item["firedIntent"] = rep_records[i].get("firedIntent", "")
+                item["firedAction"] = rep_records[i].get("firedAction", "")
+                merged.append(item)
+            res = ev.evaluate_events(merged)
+            self.assertEqual(res["per_class"]["swipe"]["hit"], 1)
+            self.assertEqual(res["per_class"]["swipe"]["windows"], 1)
+        finally:
+            os.remove(gt_path)
+            os.remove(rep_path)
+
 
 if __name__ == "__main__":
     unittest.main()
