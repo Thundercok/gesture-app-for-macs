@@ -301,7 +301,11 @@ enum ActionDispatcher {
         if runningApp.isHidden {
             runningApp.unhide()
         }
-        _ = runningApp.activate(options: [.activateIgnoringOtherApps])
+        if #available(macOS 14.0, *) {
+            runningApp.activate()
+        } else {
+            _ = runningApp.activate(options: [.activateIgnoringOtherApps])
+        }
 
         if let bundleURL = runningApp.bundleURL {
             let config = NSWorkspace.OpenConfiguration()
