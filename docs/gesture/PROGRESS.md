@@ -60,3 +60,14 @@
   - `python3 -m unittest tools/test_eval_gestures.py -v`: 17/17 passed in 0.146s.
   - `python3 tools/eval_gestures.py --test`: clean exit 0.
 - Open issues: none
+
+## WP4 — Research spike: pretrained hand-gesture models on macOS — 2026-10-12
+- Status: DONE
+- Commit: e03f0a2
+- What changed:
+  - Authored `docs/gesture/RESEARCH_PRETRAINED.md` evaluating 4 architectural options: MediaPipe Gesture Recognizer, Apple Create ML Hand Pose Classifier, CoreML converted open models (HaGRID), and Plain Normalized Landmark MLP.
+  - Compared integration effort, Apple Silicon latency, model size, license constraints, dependency burden, and dynamic swipe compatibility.
+  - Established Go/No-Go decision: NO-GO on external pixel/C++ models (MediaPipe/HaGRID); GO on lightweight Landmark MLP / Create ML model in Shadow Mode (WP7) for static posture gating, retaining deterministic kinematic arbitration for dynamic gestures.
+- Verification:
+  - Document review complete; conforms to academic rules (no synthetic benchmarks claimed as real, cited sources and licenses).
+- Open issues: none
