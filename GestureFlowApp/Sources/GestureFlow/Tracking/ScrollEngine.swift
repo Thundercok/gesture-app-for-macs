@@ -136,6 +136,7 @@ final class ScrollEngine {
 
 
     func process(_ landmarks: HandLandmarks?) {
+        let tune = GestureTuning.current
         let now = Date()
         let nowTimestamp = now.timeIntervalSinceReferenceDate
         lastProcessTime = now
@@ -279,9 +280,9 @@ final class ScrollEngine {
 
                     // Flick Criteria:
                     // 1. Minimum travel: >= 0.026 (~2-3 cm physical movement)
-                    // 2. High velocity: >= 0.42 normalized units/s (normal hand hover is 0.05 - 0.20)
+                    // 2. High velocity: >= tune.scrollFlickMinVelocity
                     // 3. Dominantly vertical: |dy| >= 1.15 * |dx|
-                    if absDy >= 0.026 && abs(velY) >= 0.42 && absDy >= (1.15 * absDx) {
+                    if absDy >= 0.026 && abs(velY) >= tune.scrollFlickMinVelocity && absDy >= (1.15 * absDx) {
                         IntentArbiter.shared.claim(intent: .airScroll)
                         isTrackingStroke = true
                         strokeDirection = dy > 0 ? .up : .down
@@ -324,7 +325,8 @@ final class ScrollEngine {
                 let absPeak = abs(strokePeakVelocity)
                 let absDy = abs(totalDy)
 
-                if absDy >= 0.025 && absPeak >= 0.40 && absDy >= (1.10 * abs(totalDx)) {
+                let confirmVelocity = tune.scrollFlickMinVelocity * (0.40 / 0.42)
+                if absDy >= 0.025 && absPeak >= confirmVelocity && absDy >= (1.10 * abs(totalDx)) {
                     // Trigger the Kinetic Flick!
                     fireFlick(direction: dir, peakVelocity: strokePeakVelocity, clutch: clutchType, nowTimestamp: nowTimestamp, landmarks: lm)
                 }

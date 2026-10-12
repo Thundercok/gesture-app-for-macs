@@ -413,6 +413,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         passiveItem.toolTip = "Chỉ lưu toạ độ landmark và trạng thái engine khi xảy ra sự cố, tuyệt đối không lưu hình ảnh camera."
         menu.addItem(passiveItem)
 
+        let sensitivityMenu = NSMenu()
+        let safeItem = NSMenuItem(title: "An toàn (Safe - Ít bắn nhầm nhất)", action: #selector(setTuningSafe), keyEquivalent: "")
+        safeItem.target = self
+        safeItem.state = (GestureTuning.current.preset == .safe) ? .on : .off
+        sensitivityMenu.addItem(safeItem)
+
+        let balancedItem = NSMenuItem(title: "Cân bằng (Balanced - Mặc định)", action: #selector(setTuningBalanced), keyEquivalent: "")
+        balancedItem.target = self
+        balancedItem.state = (GestureTuning.current.preset == .balanced) ? .on : .off
+        sensitivityMenu.addItem(balancedItem)
+
+        let sensitiveItem = NSMenuItem(title: "Nhạy (Sensitive - Nhẹ tay)", action: #selector(setTuningSensitive), keyEquivalent: "")
+        sensitiveItem.target = self
+        sensitiveItem.state = (GestureTuning.current.preset == .sensitive) ? .on : .off
+        sensitivityMenu.addItem(sensitiveItem)
+
+        let sensitivityParentItem = NSMenuItem(title: "Độ nhạy cử chỉ (Sensitivity)", action: nil, keyEquivalent: "")
+        sensitivityParentItem.submenu = sensitivityMenu
+        menu.addItem(sensitivityParentItem)
+
         let modeMenu = NSMenu()
         let minimalItem = NSMenuItem(title: "Tối giản (Vector)", action: #selector(setModeMinimal), keyEquivalent: "")
         minimalItem.target = self
@@ -480,6 +500,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sender.state = IncidentRecorder.shared.isEnabled ? .on : .off
         let status = IncidentRecorder.shared.isEnabled ? "BẬT" : "TẮT"
         appState.setAction("Ghi sự cố thụ động: \(status)")
+    }
+
+    @objc private func setTuningSafe(_ sender: NSMenuItem) {
+        GestureTuning.current = .safe
+        updateTuningMenuState()
+        appState.setAction("Độ nhạy: An toàn (Safe)")
+    }
+
+    @objc private func setTuningBalanced(_ sender: NSMenuItem) {
+        GestureTuning.current = .balanced
+        updateTuningMenuState()
+        appState.setAction("Độ nhạy: Cân bằng (Balanced)")
+    }
+
+    @objc private func setTuningSensitive(_ sender: NSMenuItem) {
+        GestureTuning.current = .sensitive
+        updateTuningMenuState()
+        appState.setAction("Độ nhạy: Nhạy (Sensitive)")
+    }
+
+    private func updateTuningMenuState() {
+        guard let item = statusItem?.menu?.item(withTitle: "Độ nhạy cử chỉ (Sensitivity)"),
+              let sub = item.submenu else { return }
+        let currentPreset = GestureTuning.current.preset
+        for menuItem in sub.items {
+            if menuItem.action == #selector(setTuningSafe) {
+                menuItem.state = (currentPreset == .safe) ? .on : .off
+            } else if menuItem.action == #selector(setTuningBalanced) {
+                menuItem.state = (currentPreset == .balanced) ? .on : .off
+            } else if menuItem.action == #selector(setTuningSensitive) {
+                menuItem.state = (currentPreset == .sensitive) ? .on : .off
+            }
+        }
     }
 
     @objc private func setModeAirScroll() {

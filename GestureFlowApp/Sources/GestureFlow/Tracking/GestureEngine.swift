@@ -29,6 +29,7 @@ final class GestureEngine {
     private var lastCentroid: CGPoint = .zero
     private var handSpeed: Double = 0.0
     private var stableOpenFrames: Int = 0
+    private var openPalmSince: TimeInterval? = nil
 
     // MARK: - Trackpad Spatial Swipes (Mac Navigation Mode)
     private struct SwipeSample {
@@ -66,6 +67,7 @@ final class GestureEngine {
         filteredVelocity = 0.0
         handSpeed = 0.0
         stableOpenFrames = 0
+        openPalmSince = nil
         swipeHistory.removeAll(keepingCapacity: true)
         pendingSuppressReason = nil
         pendingSuppressFrames = 0
@@ -199,18 +201,27 @@ final class GestureEngine {
             lastPinchTime = nowTimestamp
         }
 
-        // Open hand stability tracking
+        let tune = GestureTuning.current
+
+        // Open hand stability and dwell tracking
         let isOpenFingers = (lm.fingerCount >= 3) || lm.isOpenHand || lm.isStrictOpenPalm
         if isOpenFingers && !isPinching {
             stableOpenFrames += 1
+            if openPalmSince == nil {
+                openPalmSince = nowTimestamp
+            }
         } else {
             stableOpenFrames = 0
+            openPalmSince = nil
         }
+
+        let palmDwell = nowTimestamp - (openPalmSince ?? nowTimestamp)
+        let isPalmDwellSatisfied = (stableOpenFrames >= 3) && (palmDwell >= tune.openPalmDwellSeconds)
 
         // Evaluate Trackpad Spatial Swipes (Left/Right Space, Up Mission Control, Down Desktop)
         // Strict intentionality & mutual exclusion:
-        // 1. Hand MUST have open/extended fingers stably for at least 3 frames
-        // 2. Must not have pinched recently (within 0.35s)
+        // 1. Hand MUST have open/extended fingers stably for at least 3 frames + dwell time
+        // 2. Must not have pinched recently (within postPinchSwipeGuardSeconds)
         // 3. Engine must be in standby state
         // 4. IntentArbiter allows .swipe
         let isStandbyState: Bool = {
@@ -220,8 +231,8 @@ final class GestureEngine {
         let canSwipe = IntentArbiter.shared.canBegin(intent: .swipe, now: nowTimestamp)
         var isEligibleForSwipe = false
         if activeSuppressReason == nil && isStandbyState && !isPinching {
-            if lm.isInInteractionRange && isOpenFingers && stableOpenFrames >= 3 {
-                if (nowTimestamp - lastPinchTime) > 0.35 && canSwipe {
+            if lm.isInInteractionRange && isOpenFingers && isPalmDwellSatisfied {
+                if (nowTimestamp - lastPinchTime) > tune.postPinchSwipeGuardSeconds && canSwipe {
                     isEligibleForSwipe = true
                 }
             }
@@ -249,7 +260,7 @@ final class GestureEngine {
                     let absVy = abs(vy)
 
                     // 1. Horizontal Swipes (Switch Space Left / Right) - deliberate displacement required
-                    if absDx >= 0.065 && absVx >= 0.50 && absDx >= (absDy * 1.30) {
+                    if absDx >= tune.swipeMinDisplacement && absVx >= tune.swipeMinVelocity && absDx >= (absDy * tune.swipeAxisDominance) {
                         IntentArbiter.shared.claim(intent: .swipe)
                         if dx < 0 {
                             // Swiped physical Left -> switch to space on the right (like 3-finger trackpad swipe left)
@@ -265,14 +276,14 @@ final class GestureEngine {
                             onAction?("Chuyển Space Trái ←")
                         }
                         lastSwipeTime = nowTimestamp
-                        swipeCooldownUntil = nowTimestamp + 0.45
+                        swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
                         swipeHistory.removeAll(keepingCapacity: true)
-                        IntentArbiter.shared.commitAction(gesture: .swipe, cooldown: 0.42, now: nowTimestamp)
+                        IntentArbiter.shared.commitAction(gesture: .swipe, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
                         return
                     }
 
                     // 2. Vertical Swipes (Mission Control / Show Desktop)
-                    if absDy >= 0.065 && absVy >= 0.50 && absDy >= (absDx * 1.30) {
+                    if absDy >= tune.swipeMinDisplacement && absVy >= tune.swipeMinVelocity && absDy >= (absDx * tune.swipeAxisDominance) {
                         IntentArbiter.shared.claim(intent: .swipe)
                         if dy > 0 {
                             // Swiped physical Up -> Mission Control (like 3-finger trackpad swipe up)
@@ -288,9 +299,9 @@ final class GestureEngine {
                             onAction?("Hiện Desktop ↓")
                         }
                         lastSwipeTime = nowTimestamp
-                        swipeCooldownUntil = nowTimestamp + 0.50
+                        swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
                         swipeHistory.removeAll(keepingCapacity: true)
-                        IntentArbiter.shared.commitAction(gesture: .swipe, cooldown: 0.45, now: nowTimestamp)
+                        IntentArbiter.shared.commitAction(gesture: .swipe, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
                         return
                     }
                 }
@@ -306,7 +317,7 @@ final class GestureEngine {
             // Instant Pinch to open Dock Switcher (requires stationary hand and IntentArbiter clearance)
             let notInSwipeCooldown = (nowTimestamp - lastSwipeTime) > 0.40
             let canPinchDock = IntentArbiter.shared.canBegin(intent: .pinchDock, now: nowTimestamp)
-            let isCalmHand = handSpeed < 0.42
+            let isCalmHand = handSpeed < tune.pinchCalmHandSpeed
 
             let shouldOpenDock = isPinching &&
                                  lm.isInInteractionRange &&
@@ -399,7 +410,7 @@ final class GestureEngine {
             onScanProgress?(1.0)
 
             let canPinchArmed = IntentArbiter.shared.canBegin(intent: .pinchDock, now: nowTimestamp)
-            if isPinching && canPinchArmed && handSpeed < 0.42 {
+            if isPinching && canPinchArmed && handSpeed < tune.pinchCalmHandSpeed {
                 let apps = ActionDispatcher.getRecentApps()
                 guard !apps.isEmpty else { return }
 
