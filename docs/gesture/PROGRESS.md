@@ -63,7 +63,7 @@
 
 ## WP4 — Research spike: pretrained hand-gesture models on macOS — 2026-10-12
 - Status: DONE
-- Commit: e03f0a2
+- Commit: d284ed6
 - What changed:
   - Authored `docs/gesture/RESEARCH_PRETRAINED.md` evaluating 4 architectural options: MediaPipe Gesture Recognizer, Apple Create ML Hand Pose Classifier, CoreML converted open models (HaGRID), and Plain Normalized Landmark MLP.
   - Compared integration effort, Apple Silicon latency, model size, license constraints, dependency burden, and dynamic swipe compatibility.
