@@ -19,8 +19,24 @@ final class GestureEngine {
 
     private var state: State = .standby
     private var chargeLevel: CGFloat = 0.0       // 0.0 to 1.0 leaky charge accumulator
-    private var lastProcessTime: Date = Date()
-    private var lastHandSeenTime: Date = Date()
+    private var lastProcessTime: Date
+    private var lastHandSeenTime: Date
+
+    private let clock: Clock
+    private let actionSink: ActionSink
+    private let arbiter: IntentArbiter
+
+    init(
+        clock: Clock = SystemClock.shared,
+        actionSink: ActionSink = LiveActionSink.shared,
+        arbiter: IntentArbiter = .shared
+    ) {
+        self.clock = clock
+        self.actionSink = actionSink
+        self.arbiter = arbiter
+        self.lastProcessTime = clock.now
+        self.lastHandSeenTime = clock.now
+    }
 
     private let deadzoneRadius: CGFloat = 0.022  // Compact center deadzone for quick toggle
     private let stepWidth: CGFloat = 0.038       // Compact physical travel per app detent (~4-5cm)
@@ -73,8 +89,8 @@ final class GestureEngine {
         pendingSuppressFrames = 0
         activeSuppressReason = nil
         state = .standby
-        IntentArbiter.shared.release(intent: .pinchDock)
-        IntentArbiter.shared.release(intent: .swipe)
+        arbiter.release(intent: .pinchDock)
+        arbiter.release(intent: .swipe)
         onArmedStatus?(false)
         onScanProgress?(0.0)
     }
@@ -112,7 +128,7 @@ final class GestureEngine {
 
 
     private func logSuppression(reason: GateSuppressReason, centroid: CGPoint) {
-        let now = Date()
+        let now = clock.now
         if now.timeIntervalSince(lastSuppressionLogTime) > 0.35 || lastSuppressionReason != reason.rawValue {
             lastSuppressionLogTime = now
             lastSuppressionReason = reason.rawValue
@@ -138,7 +154,7 @@ final class GestureEngine {
     private(set) var activeSuppressReason: GateSuppressReason?
 
     func process(_ landmarks: HandLandmarks?) {
-        let now = Date()
+        let now = clock.now
         let dt = min(0.1, max(0.001, now.timeIntervalSince(lastProcessTime)))
         lastProcessTime = now
 
@@ -228,7 +244,7 @@ final class GestureEngine {
             if case .standby = state { return true }
             return false
         }()
-        let canSwipe = IntentArbiter.shared.canBegin(intent: .swipe, now: nowTimestamp)
+        let canSwipe = arbiter.canBegin(intent: .swipe, now: nowTimestamp)
         var isEligibleForSwipe = false
         if activeSuppressReason == nil && isStandbyState && !isPinching {
             if lm.isInInteractionRange && isOpenFingers && isPalmDwellSatisfied {
@@ -261,49 +277,49 @@ final class GestureEngine {
 
                     // 1. Horizontal Swipes (Switch Space Left / Right) - deliberate displacement required
                     if absDx >= tune.swipeMinDisplacement && absVx >= tune.swipeMinVelocity && absDx >= (absDy * tune.swipeAxisDominance) {
-                        IntentArbiter.shared.claim(intent: .swipe)
+                        arbiter.claim(intent: .swipe)
                         if dx < 0 {
                             // Swiped physical Left -> switch to space on the right (like 3-finger trackpad swipe left)
-                            ActionDispatcher.switchSpace(.right)
-                            ActionDispatcher.playFeedback(named: "Pop")
-                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                            actionSink.switchSpace(.right)
+                            actionSink.playFeedback(named: "Pop")
+                            actionSink.playHaptic()
                             onAction?("Chuyển Space Phải →")
                         } else {
                             // Swiped physical Right -> switch to space on the left
-                            ActionDispatcher.switchSpace(.left)
-                            ActionDispatcher.playFeedback(named: "Pop")
-                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                            actionSink.switchSpace(.left)
+                            actionSink.playFeedback(named: "Pop")
+                            actionSink.playHaptic()
                             onAction?("Chuyển Space Trái ←")
                         }
                         lastSwipeTime = nowTimestamp
                         swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
                         swipeHistory.removeAll(keepingCapacity: true)
                         let swipeAction = dx < 0 ? "swipe_left" : "swipe_right"
-                        IntentArbiter.shared.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
+                        arbiter.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
                         return
                     }
 
                     // 2. Vertical Swipes (Mission Control / Show Desktop)
                     if absDy >= tune.swipeMinDisplacement && absVy >= tune.swipeMinVelocity && absDy >= (absDx * tune.swipeAxisDominance) {
-                        IntentArbiter.shared.claim(intent: .swipe)
+                        arbiter.claim(intent: .swipe)
                         if dy > 0 {
                             // Swiped physical Up -> Mission Control (like 3-finger trackpad swipe up)
-                            ActionDispatcher.triggerMissionControl()
-                            ActionDispatcher.playFeedback(named: "Glass")
-                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                            actionSink.triggerMissionControl()
+                            actionSink.playFeedback(named: "Glass")
+                            actionSink.playHaptic()
                             onAction?("Mission Control ↑")
                         } else {
                             // Swiped physical Down -> Show Desktop (like 3-finger trackpad swipe down)
-                            ActionDispatcher.showDesktop()
-                            ActionDispatcher.playFeedback(named: "Tink")
-                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                            actionSink.showDesktop()
+                            actionSink.playFeedback(named: "Tink")
+                            actionSink.playHaptic()
                             onAction?("Hiện Desktop ↓")
                         }
                         lastSwipeTime = nowTimestamp
                         swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
                         swipeHistory.removeAll(keepingCapacity: true)
                         let swipeAction = dy > 0 ? "swipe_up" : "swipe_down"
-                        IntentArbiter.shared.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
+                        arbiter.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
                         return
                     }
                 }
@@ -318,7 +334,7 @@ final class GestureEngine {
 
             // Instant Pinch to open Dock Switcher (requires stationary hand and IntentArbiter clearance)
             let notInSwipeCooldown = (nowTimestamp - lastSwipeTime) > 0.40
-            let canPinchDock = IntentArbiter.shared.canBegin(intent: .pinchDock, now: nowTimestamp)
+            let canPinchDock = arbiter.canBegin(intent: .pinchDock, now: nowTimestamp)
             let isCalmHand = handSpeed < tune.pinchCalmHandSpeed
 
             let shouldOpenDock = isPinching &&
@@ -329,11 +345,11 @@ final class GestureEngine {
                                  isCalmHand
 
             if shouldOpenDock {
-                let apps = ActionDispatcher.getRecentApps()
+                let apps = actionSink.getRecentApps()
                 if !apps.isEmpty {
-                    IntentArbiter.shared.claim(intent: .pinchDock)
+                    arbiter.claim(intent: .pinchDock)
                     let initialIndex = (apps.count > 1) ? 1 : 0
-                    ActionDispatcher.playFeedback(named: "Pop")
+                    actionSink.playFeedback(named: "Pop")
                     TelemetryLogger.shared.log(
                         action: "dock_open",
                         reason: nil,
@@ -381,7 +397,7 @@ final class GestureEngine {
                     chargeLevel: 1.0,
                     handCentroid: lm.handCentroid
                 )
-                ActionDispatcher.playFeedback(named: "Glass")
+                actionSink.playFeedback(named: "Glass")
                 state = .armed(expiresAt: now.addingTimeInterval(4.0))
                 onArmedStatus?(true)
                 onScanProgress?(1.0)
@@ -411,15 +427,15 @@ final class GestureEngine {
             onArmedStatus?(true)
             onScanProgress?(1.0)
 
-            let canPinchArmed = IntentArbiter.shared.canBegin(intent: .pinchDock, now: nowTimestamp)
+            let canPinchArmed = arbiter.canBegin(intent: .pinchDock, now: nowTimestamp)
             if isPinching && canPinchArmed && handSpeed < tune.pinchCalmHandSpeed {
-                let apps = ActionDispatcher.getRecentApps()
+                let apps = actionSink.getRecentApps()
                 guard !apps.isEmpty else { return }
 
-                IntentArbiter.shared.claim(intent: .pinchDock)
+                arbiter.claim(intent: .pinchDock)
                 // Index 1 is the previous app (instant Cmd+Tab toggle target)
                 let initialIndex = (apps.count > 1) ? 1 : 0
-                ActionDispatcher.playFeedback(named: "Pop")
+                actionSink.playFeedback(named: "Pop")
                 TelemetryLogger.shared.log(
                     action: "dock_open",
                     reason: nil,
@@ -465,7 +481,7 @@ final class GestureEngine {
 
                 onDockSelectIndex?(commitIndex, .zero)
                 commitSwitch(centroid: currentPoint)
-                IntentArbiter.shared.commitAction(gesture: .pinchDock, action: "pinch_dock", cooldown: 0.38, now: nowTimestamp)
+                arbiter.commitAction(gesture: .pinchDock, action: "pinch_dock", cooldown: 0.38, now: nowTimestamp)
                 lastDx = 0.0
                 filteredVelocity = 0.0
                 state = .cooldown(until: now.addingTimeInterval(0.30))
@@ -511,7 +527,7 @@ final class GestureEngine {
                 }
 
                 if targetIndex != selectedIndex {
-                    ActionDispatcher.playFeedback(named: "Tink")
+                    actionSink.playFeedback(named: "Tink")
                     onDockSelectIndex?(targetIndex, tiltDelta)
                     state = .engaged(
                         anchor: anchor,
@@ -540,7 +556,7 @@ final class GestureEngine {
             handCentroid: centroid
         )
         onDockCommit?()
-        ActionDispatcher.playFeedback(named: "Pop")
+        actionSink.playFeedback(named: "Pop")
     }
 
     private func handleHandLost(now: Date, dt: Double) {
@@ -557,12 +573,12 @@ final class GestureEngine {
                 let commitIndex = (elapsedSinceChange < 0.12) ? lastStableIndex : selectedIndex
                 onDockSelectIndex?(commitIndex, .zero)
                 commitSwitch(centroid: .zero)
-                IntentArbiter.shared.commitAction(gesture: .pinchDock, action: "pinch_dock", cooldown: 0.35, now: now.timeIntervalSinceReferenceDate)
+                arbiter.commitAction(gesture: .pinchDock, action: "pinch_dock", cooldown: 0.35, now: now.timeIntervalSinceReferenceDate)
                 state = .cooldown(until: now.addingTimeInterval(0.35))
                 return
             }
 
-            IntentArbiter.shared.release(intent: .pinchDock)
+            arbiter.release(intent: .pinchDock)
             state = .standby
             onArmedStatus?(false)
             onScanProgress?(0.0)

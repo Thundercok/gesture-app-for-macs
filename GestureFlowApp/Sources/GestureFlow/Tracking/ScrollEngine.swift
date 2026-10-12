@@ -45,8 +45,12 @@ final class ScrollEngine {
 
     // Live momentum tracking
     private var liveMomentumVelocity: Double = 0.0
-    private var lastProcessTime: Date = Date()
-    private var lastHandSeenTime: Date = Date()
+    private var lastProcessTime: Date
+    private var lastHandSeenTime: Date
+
+    private let clock: Clock
+    private let actionSink: ActionSink
+    private let arbiter: IntentArbiter
 
     // Intentionality Gating Constants
     static let facingCameraSuppressEnter: Double = 0.20
@@ -68,16 +72,26 @@ final class ScrollEngine {
     var onSuppressStatus: ((_ reason: GestureEngine.GateSuppressReason?) -> Void)?
     var onAction: ((_ title: String) -> Void)?
 
-    init() {
-        // Wire ActionDispatcher momentum callbacks
-        ActionDispatcher.onMomentumProgress = { [weak self] currentVel in
+    init(
+        clock: Clock = SystemClock.shared,
+        actionSink: ActionSink = LiveActionSink.shared,
+        arbiter: IntentArbiter = .shared
+    ) {
+        self.clock = clock
+        self.actionSink = actionSink
+        self.arbiter = arbiter
+        self.lastProcessTime = clock.now
+        self.lastHandSeenTime = clock.now
+
+        // Wire actionSink momentum callbacks
+        self.actionSink.onMomentumProgress = { [weak self] currentVel in
             guard let self = self else { return }
             self.liveMomentumVelocity = currentVel
             self.onScrollDelta?(currentVel < 0 ? -1.0 : 1.0, currentVel / 160.0)
             self.onScrollStatus?(true, nil, currentVel / 160.0)
         }
 
-        ActionDispatcher.onMomentumEnded = { [weak self] in
+        self.actionSink.onMomentumEnded = { [weak self] in
             guard let self = self else { return }
             self.liveMomentumVelocity = 0.0
             self.onScrollDelta?(0.0, 0.0)
@@ -86,7 +100,7 @@ final class ScrollEngine {
     }
 
     func forceDischarge() {
-        ActionDispatcher.cancelMomentumScroll()
+        actionSink.cancelMomentumScroll()
         pointFilter.reset()
         history.removeAll(keepingCapacity: true)
         isTrackingStroke = false
@@ -98,7 +112,7 @@ final class ScrollEngine {
         pendingSuppressReason = nil
         pendingSuppressFrames = 0
         activeSuppressReason = nil
-        IntentArbiter.shared.release(intent: .airScroll)
+        arbiter.release(intent: .airScroll)
         onScrollStatus?(false, nil, 0.0)
         onScrollDelta?(0.0, 0.0)
     }
@@ -137,7 +151,7 @@ final class ScrollEngine {
 
     func process(_ landmarks: HandLandmarks?) {
         let tune = GestureTuning.current
-        let now = Date()
+        let now = clock.now
         let nowTimestamp = now.timeIntervalSinceReferenceDate
         lastProcessTime = now
 
@@ -234,23 +248,23 @@ final class ScrollEngine {
         // A. Freezing hand stationary for 4 frames (~65ms)
         // B. Making a pinch gesture (👌)
         // C. Raising flat stop palm
-        let isActivelyCoasting = ActionDispatcher.isMomentumActive
+        let isActivelyCoasting = actionSink.isMomentumActive
         if isActivelyCoasting {
             let shouldBrake = (stationaryFramesCount >= requiredStationaryFramesForBrake) ||
                               lm.isPinching ||
                               ((lm.fingerCount >= 4 || lm.isOpenHand) && isStationary)
 
             if shouldBrake {
-                ActionDispatcher.cancelMomentumScroll()
-                ActionDispatcher.playFeedback(named: "Tink")
-                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                actionSink.cancelMomentumScroll()
+                actionSink.playFeedback(named: "Tink")
+                actionSink.playHaptic()
                 onAction?("Dừng cuộn (Brake)")
                 onScrollStatus?(false, clutchType, 0.0)
                 onScrollDelta?(0.0, 0.0)
                 resetStroke()
                 cooldownUntilTimestamp = nowTimestamp + 0.15
                 stationaryFramesCount = 0
-                IntentArbiter.shared.commitAction(gesture: .airScroll, action: "scroll_brake", cooldown: 0.15, now: nowTimestamp)
+                arbiter.commitAction(gesture: .airScroll, action: "scroll_brake", cooldown: 0.15, now: nowTimestamp)
                 return
             }
         }
@@ -265,7 +279,7 @@ final class ScrollEngine {
 
         if !isTrackingStroke {
             // Scan trajectory window (last 3 to 7 frames, approx 45ms to 120ms) for high-velocity flick impulse
-            let canScroll = IntentArbiter.shared.canBegin(intent: .airScroll, now: nowTimestamp)
+            let canScroll = arbiter.canBegin(intent: .airScroll, now: nowTimestamp)
             if canScroll && history.count >= 4 {
                 for offset in 3...min(7, history.count - 1) {
                     let oldSample = history[history.count - 1 - offset]
@@ -283,7 +297,7 @@ final class ScrollEngine {
                     // 2. High velocity: >= tune.scrollFlickMinVelocity
                     // 3. Dominantly vertical: |dy| >= 1.15 * |dx|
                     if absDy >= 0.026 && abs(velY) >= tune.scrollFlickMinVelocity && absDy >= (1.15 * absDx) {
-                        IntentArbiter.shared.claim(intent: .airScroll)
+                        arbiter.claim(intent: .airScroll)
                         isTrackingStroke = true
                         strokeDirection = dy > 0 ? .up : .down
                         strokeStartPoint = oldSample.point
@@ -359,16 +373,16 @@ final class ScrollEngine {
         }
 
         // Dispatch kinetic momentum scroll
-        ActionDispatcher.releaseScrollWithMomentum(initialVelocityX: 0.0, initialVelocityY: targetVelocityY)
+        actionSink.releaseScrollWithMomentum(initialVelocityX: 0.0, initialVelocityY: targetVelocityY)
 
         // Crisp multi-sensory feedback
-        ActionDispatcher.playFeedback(named: "Pop")
-        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        actionSink.playFeedback(named: "Pop")
+        actionSink.playHaptic()
 
         // Set refractory cooldown to swallow the return recoil movement
         cooldownUntilTimestamp = nowTimestamp + recoilCooldownDuration
         let flickAction = direction == .up ? "scroll_down" : "scroll_up"
-        IntentArbiter.shared.commitAction(gesture: .airScroll, action: flickAction, cooldown: 0.25, now: nowTimestamp)
+        arbiter.commitAction(gesture: .airScroll, action: flickAction, cooldown: 0.25, now: nowTimestamp)
 
         // Notify UI and listeners
         let actionName = direction == .up ? "Lướt xuống ↓" : "Lướt lên ↑"
@@ -386,7 +400,7 @@ final class ScrollEngine {
 
     private func resetStroke() {
         if isTrackingStroke {
-            IntentArbiter.shared.release(intent: .airScroll)
+            arbiter.release(intent: .airScroll)
         }
         isTrackingStroke = false
         strokeDirection = nil

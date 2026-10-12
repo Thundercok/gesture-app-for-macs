@@ -16,6 +16,7 @@ final class IntentArbiter {
     static let shared = IntentArbiter()
 
     private let lock = NSLock()
+    private let clock: Clock
     private(set) var activeIntent: GestureIntent = .idle
     private var cooldownUntil: TimeInterval = 0.0
     private var lastActionTimestamp: TimeInterval = 0.0
@@ -25,14 +26,16 @@ final class IntentArbiter {
 
     let defaultCooldownDuration: TimeInterval = 0.380
 
-    private init() {}
+    init(clock: Clock = SystemClock.shared) {
+        self.clock = clock
+    }
 
-    func canBegin(intent: GestureIntent, now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Bool {
-
+    func canBegin(intent: GestureIntent, now: TimeInterval? = nil) -> Bool {
         lock.lock()
         defer { lock.unlock() }
 
-        if now < cooldownUntil {
+        let currentTime = now ?? clock.uptime
+        if currentTime < cooldownUntil {
             return false
         }
         if activeIntent == .cooldown {
@@ -58,12 +61,13 @@ final class IntentArbiter {
         }
     }
 
-    func commitAction(gesture: GestureIntent, action: String = "", cooldown: TimeInterval? = nil, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+    func commitAction(gesture: GestureIntent, action: String = "", cooldown: TimeInterval? = nil, now: TimeInterval? = nil) {
         lock.lock()
         defer { lock.unlock() }
+        let currentTime = now ?? clock.uptime
         let duration = cooldown ?? defaultCooldownDuration
-        cooldownUntil = now + duration
-        lastActionTimestamp = now
+        cooldownUntil = currentTime + duration
+        lastActionTimestamp = currentTime
         activeIntent = .cooldown
         commitSequenceStorage += 1
         lastCommittedStorage = gesture
@@ -102,13 +106,13 @@ final class IntentArbiter {
     var isInCooldown: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return ProcessInfo.processInfo.systemUptime < cooldownUntil
+        return clock.uptime < cooldownUntil
     }
 
     var currentIntent: GestureIntent {
         lock.lock()
         defer { lock.unlock() }
-        if ProcessInfo.processInfo.systemUptime >= cooldownUntil && activeIntent == .cooldown {
+        if clock.uptime >= cooldownUntil && activeIntent == .cooldown {
             activeIntent = .idle
         }
 
