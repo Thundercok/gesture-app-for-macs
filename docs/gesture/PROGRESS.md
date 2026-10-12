@@ -71,3 +71,32 @@
 - Verification:
   - Document review complete; conforms to academic rules (no synthetic benchmarks claimed as real, cited sources and licenses).
 - Open issues: none
+
+## WP5 — Replay harness (enables tuning without hands) — 2026-10-12
+- Status: DONE
+- Commits: 11a5a98, 3605b13, 70dc379
+- What changed:
+  - Sub-step 1 (`11a5a98`):
+    - Abstracted clock with `Clock` protocol (`SystemClock` for live runtime, `ReplayClock` for virtual time).
+    - Isolated side-effects with `ActionSink` protocol (`LiveActionSink` for OS integration, `RecordingActionSink` for offline capture without hardware events).
+    - Extracted pure feature calculation into `HandFeatureExtractor.landmarks(...)`.
+    - Injected Clock, ActionSink, and IntentArbiter instances into `GestureEngine.swift` and `ScrollEngine.swift`.
+  - Sub-step 2 (`3605b13`):
+    - Extended `HandFrameRecord` with optional replay fields: `confidence`, `faceBBox`, `isInInteractionRange`, `handCentroid`, `tiltAngleDegrees` (with flexible JSON decoding supporting older recordings and both array/dictionary representations).
+    - Created `Tracking/ReplayRunner.swift` for headless, deterministic offline replay over JSONL files.
+    - Wired `--replay <path>`, `--tuning safe|balanced|sensitive|<json>`, `--out <path>`, and `--mode <nav|scroll|all>` CLI flags in `main.swift`.
+  - Sub-step 3 (`70dc379`):
+    - Created synthetic test fixtures in `tools/fixtures/` (`synthetic_swipe_left.jsonl`, `synthetic_pinch.jsonl`).
+    - Added golden references under `tools/golden/` locking byte-for-byte deterministic outputs using `.sortedKeys` JSON formatting.
+    - Implemented `tools/test_replay.py` asserting exact replayed action sequences and 100% byte-for-byte parity against golden references.
+    - Extended `tools/eval_gestures.py` with `--replayed <path>` to evaluate replayed outputs against dataset ground truths.
+    - Implemented `tools/sweep.py` for grid search over `GestureTuning` parameters with guard requiring >= 20 gesture windows on real datasets.
+    - Unit tests expanded to 22 tests across test suites (18 in `test_eval_gestures.py`, 4 in `test_replay.py`), all green.
+- Verification:
+  - `swift build`: clean in 10.63s (0 errors, 0 warnings).
+  - `python3 -m unittest tools/test_eval_gestures.py -v`: 18/18 passed in 0.067s.
+  - `python3 -m unittest tools/test_replay.py -v`: 4/4 passed in 0.694s.
+  - Determinism test: `diff -u tools/golden/... <replayed>` returns completely empty (exit 0).
+  - Side-effect isolation: grep confirms 0 direct calls to `ActionDispatcher.` inside engines and replay runner.
+- Open issues: none
+
