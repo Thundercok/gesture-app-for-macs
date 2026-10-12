@@ -75,5 +75,51 @@ class EventScorer(unittest.TestCase):
         self.assertEqual((r["hit"], r["double_fire"]), (1, 0))
 
 
+class IncidentEvaluationTests(unittest.TestCase):
+    def test_wilson_interval_zero(self):
+        self.assertIsNone(ev.wilson_score_interval(0, 0))
+        self.assertIsNone(ev.wilson_score_interval(5, 0))
+
+    def test_wilson_interval_arithmetic(self):
+        interval = ev.wilson_score_interval(10, 100)
+        self.assertIsNotNone(interval)
+        lo, hi = interval
+        self.assertTrue(0.04 < lo < 0.10)
+        self.assertTrue(0.10 < hi < 0.18)
+
+    def test_load_dataset_skips_header(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w+", suffix=".jsonl", delete=False) as f:
+            f.write('{"incident":"misfire","createdAt":"2026-10-12T14:00:00Z","appVersion":"dev","note":""}\n')
+            f.write('{"timestamp":1.0,"groundTruth":"idle","predictedIntent":"idle"}\n')
+            f_path = f.name
+        try:
+            loaded = ev.load_dataset(f_path)
+            self.assertEqual(len(loaded), 1)
+            self.assertEqual(loaded[0]["groundTruth"], "idle")
+        finally:
+            os.remove(f_path)
+
+    def test_evaluate_incidents_misfire_rate(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 3 fires
+            for i in range(3):
+                with open(os.path.join(tmpdir, f"file_{i}_fire.jsonl"), "w") as f:
+                    f.write('{"incident":"fire","createdAt":"2026-10-12T14:00:00Z","appVersion":"dev","note":""}\n')
+                    f.write('{"timestamp":1.0,"groundTruth":"unlabeled","predictedIntent":"swipe","firedIntent":"swipe"}\n')
+            # 1 misfire
+            with open(os.path.join(tmpdir, "file_3_misfire.jsonl"), "w") as f:
+                f.write('{"incident":"misfire","createdAt":"2026-10-12T14:05:00Z","appVersion":"dev","note":""}\n')
+                f.write('{"timestamp":2.0,"groundTruth":"misfire","predictedIntent":"swipe","firedIntent":"swipe"}\n')
+
+            res = ev.evaluate_incidents(tmpdir)
+            self.assertEqual(res["counts"]["fire"], 3)
+            self.assertEqual(res["counts"]["misfire"], 1)
+            self.assertAlmostEqual(res["misfire_rate"], 0.25)
+            self.assertIsNotNone(res["wilson_interval"])
+            self.assertEqual(res["per_intent_misfires"].get("swipe"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

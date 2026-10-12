@@ -277,9 +277,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupKeyboardMonitoring() {
-        // Global monitor for labeling gestures during recording (keys '0'...'8')
+        // Global monitor
         NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self, DatasetRecorder.shared.isRecording else { return }
+            guard let self = self else { return }
+
+            // Check for misfire / missed gesture markers (Ctrl + Opt + Cmd + M / N)
+            let flags = event.modifierFlags
+            let hasModifiers = flags.contains([.control, .option, .command])
+            if hasModifiers, let chars = event.charactersIgnoringModifiers?.lowercased() {
+                if chars == "m" {
+                    IncidentRecorder.shared.markUser(.misfire)
+                    DispatchQueue.main.async {
+                        self.appState.setAction("Đã đánh dấu bắn sai")
+                        NSSound(named: "Basso")?.play()
+                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    }
+                    return
+                } else if chars == "n" {
+                    IncidentRecorder.shared.markUser(.missed)
+                    DispatchQueue.main.async {
+                        self.appState.setAction("Đã đánh dấu bỏ lỡ cử chỉ")
+                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    }
+                    return
+                }
+            }
+
+            // Labeling gestures during recording (keys '0'...'8')
+            guard DatasetRecorder.shared.isRecording else { return }
             guard let characters = event.characters, let firstChar = characters.first else { return }
             if DatasetRecorder.shared.setLabelFromKey(firstChar) {
                 DispatchQueue.main.async {
@@ -292,7 +317,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Local monitor when window/panel has focus
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self, DatasetRecorder.shared.isRecording else { return event }
+            guard let self = self else { return event }
+
+            // Check for misfire / missed gesture markers (Ctrl + Opt + Cmd + M / N)
+            let flags = event.modifierFlags
+            let hasModifiers = flags.contains([.control, .option, .command])
+            if hasModifiers, let chars = event.charactersIgnoringModifiers?.lowercased() {
+                if chars == "m" {
+                    IncidentRecorder.shared.markUser(.misfire)
+                    DispatchQueue.main.async {
+                        self.appState.setAction("Đã đánh dấu bắn sai")
+                        NSSound(named: "Basso")?.play()
+                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    }
+                    return nil
+                } else if chars == "n" {
+                    IncidentRecorder.shared.markUser(.missed)
+                    DispatchQueue.main.async {
+                        self.appState.setAction("Đã đánh dấu bỏ lỡ cử chỉ")
+                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                    }
+                    return nil
+                }
+            }
+
+            guard DatasetRecorder.shared.isRecording else { return event }
             guard let characters = event.characters, let firstChar = characters.first else { return event }
             if DatasetRecorder.shared.setLabelFromKey(firstChar) {
                 DispatchQueue.main.async {
@@ -350,6 +399,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recordItem.target = self
         menu.addItem(recordItem)
 
+        let markMisfireItem = NSMenuItem(title: "Đánh dấu vừa bắn sai (⌃⌥⌘M)", action: #selector(markMisfireIncident), keyEquivalent: "")
+        markMisfireItem.target = self
+        menu.addItem(markMisfireItem)
+
+        let markMissedItem = NSMenuItem(title: "Đánh dấu vừa bỏ lỡ cử chỉ (⌃⌥⌘N)", action: #selector(markMissedIncident), keyEquivalent: "")
+        markMissedItem.target = self
+        menu.addItem(markMissedItem)
+
+        let passiveItem = NSMenuItem(title: "Ghi sự cố thụ động (Flight Recorder)", action: #selector(togglePassiveIncidents), keyEquivalent: "")
+        passiveItem.target = self
+        passiveItem.state = IncidentRecorder.shared.isEnabled ? .on : .off
+        passiveItem.toolTip = "Chỉ lưu toạ độ landmark và trạng thái engine khi xảy ra sự cố, tuyệt đối không lưu hình ảnh camera."
+        menu.addItem(passiveItem)
+
         let modeMenu = NSMenu()
         let minimalItem = NSMenuItem(title: "Tối giản (Vector)", action: #selector(setModeMinimal), keyEquivalent: "")
         minimalItem.target = self
@@ -397,6 +460,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         item.menu = menu
         self.statusItem = item
+    }
+
+    @objc private func markMisfireIncident() {
+        IncidentRecorder.shared.markUser(.misfire)
+        appState.setAction("Đã đánh dấu bắn sai")
+        NSSound(named: "Basso")?.play()
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+    }
+
+    @objc private func markMissedIncident() {
+        IncidentRecorder.shared.markUser(.missed)
+        appState.setAction("Đã đánh dấu bỏ lỡ cử chỉ")
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+    }
+
+    @objc private func togglePassiveIncidents(_ sender: NSMenuItem) {
+        IncidentRecorder.shared.isEnabled.toggle()
+        sender.state = IncidentRecorder.shared.isEnabled ? .on : .off
+        let status = IncidentRecorder.shared.isEnabled ? "BẬT" : "TẮT"
+        appState.setAction("Ghi sự cố thụ động: \(status)")
     }
 
     @objc private func setModeAirScroll() {
@@ -747,10 +830,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.previousBimanualSpan = 0.0
             }
 
-            if DatasetRecorder.shared.isRecording {
-                let seq = IntentArbiter.shared.commitSequence
-                let fired: String = (seq != self.lastRecordedCommitSequence) ? IntentArbiter.shared.lastCommitted.rawValue : ""
+            let seq = IntentArbiter.shared.commitSequence
+            let fired: String = (seq != self.lastRecordedCommitSequence) ? IntentArbiter.shared.lastCommitted.rawValue : ""
+            if seq != self.lastRecordedCommitSequence {
                 self.lastRecordedCommitSequence = seq
+                IncidentRecorder.shared.markAutoFire(intent: fired)
+            }
+
+            let frameRec = makeFrameRecord(
+                frameIndex: self.frameCount,
+                timestamp: pts.seconds,
+                primary: landmarks,
+                secondary: secondaryLandmarks,
+                predictedIntent: IntentArbiter.shared.currentIntent.rawValue,
+                firedIntent: fired,
+                groundTruth: DatasetRecorder.shared.currentLabel
+            )
+
+            if DatasetRecorder.shared.isRecording {
                 DatasetRecorder.shared.recordFrame(
                     frameIndex: self.frameCount,
                     timestamp: pts.seconds,
@@ -760,6 +857,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     firedIntent: fired
                 )
             }
+
+            IncidentRecorder.shared.ingest(frame: frameRec)
 
             // Smart Power Management: 15 FPS when idle (>2.0s without hand), 60 FPS instant wake-up
             if landmarks != nil {

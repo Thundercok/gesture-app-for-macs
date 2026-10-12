@@ -24,6 +24,36 @@ struct HandFrameRecord: Codable {
     let secondaryPoints: [LandmarkPointRecord]?
 }
 
+func makeFrameRecord(
+    frameIndex: Int,
+    timestamp: TimeInterval,
+    primary: HandLandmarks?,
+    secondary: HandLandmarks?,
+    predictedIntent: String,
+    firedIntent: String = "",
+    groundTruth: String
+) -> HandFrameRecord {
+    let pPoints = primary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) } ?? []
+    let sPoints = secondary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) }
+
+    return HandFrameRecord(
+        timestamp: timestamp,
+        frameIndex: frameIndex,
+        groundTruth: groundTruth,
+        predictedIntent: predictedIntent,
+        firedIntent: firedIntent,
+        handDetected: primary != nil,
+        fingerCount: primary?.fingerCount ?? 0,
+        isPinching: primary?.isPinching ?? false,
+        isTwoFingers: primary?.isTwoFingers ?? false,
+        isRaisedHand: primary?.isRaisedHand ?? false,
+        estimatedDepth: Double(primary?.estimatedDepth ?? 0.0),
+        facingCamera: primary?.facingCamera ?? 1.0,
+        primaryPoints: pPoints,
+        secondaryPoints: sPoints
+    )
+}
+
 final class DatasetRecorder {
     static let shared = DatasetRecorder()
 
@@ -129,24 +159,14 @@ final class DatasetRecorder {
     ) {
         guard isRecording, let handle = fileHandle else { return }
 
-        let pPoints = primary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) } ?? []
-        let sPoints = secondary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) }
-
-        let record = HandFrameRecord(
-            timestamp: timestamp,
+        let record = makeFrameRecord(
             frameIndex: frameIndex,
-            groundTruth: currentLabel,
+            timestamp: timestamp,
+            primary: primary,
+            secondary: secondary,
             predictedIntent: predictedIntent,
             firedIntent: firedIntent,
-            handDetected: primary != nil,
-            fingerCount: primary?.fingerCount ?? 0,
-            isPinching: primary?.isPinching ?? false,
-            isTwoFingers: primary?.isTwoFingers ?? false,
-            isRaisedHand: primary?.isRaisedHand ?? false,
-            estimatedDepth: Double(primary?.estimatedDepth ?? 0.0),
-            facingCamera: primary?.facingCamera ?? 1.0,
-            primaryPoints: pPoints,
-            secondaryPoints: sPoints
+            groundTruth: currentLabel
         )
 
         queue.async { [weak self] in
