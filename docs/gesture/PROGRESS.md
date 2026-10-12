@@ -100,3 +100,35 @@
   - Side-effect isolation: grep confirms 0 direct calls to `ActionDispatcher.` inside engines and replay runner.
 - Open issues: none
 
+## 2026-10-12: WP6 — Structural Refactor (Behaviour-Preserving)
+
+- Commits:
+  - `9889f1b`: `refactor(app): split main.swift (no behaviour change)`
+  - `ce6545a`: `refactor(tracking): split GestureEngine process into helper stages`
+- Status: **DONE**
+- Deliverables:
+  - Split `main.swift` (~1070 lines) into modular app components under `GestureFlowApp/Sources/GestureFlow/App/`:
+    - `AppState.swift`: Observable application state, system mode enumeration, camera display mode enumeration.
+    - `AppDelegate.swift`: Application lifecycle, window setup, spatial switcher dock setup, permission checking.
+    - `MenuBar.swift`: NSStatusItem menu configuration, mode switching, sensitivity preset updates, incident actions.
+    - `KeyboardMonitors.swift`: Global and local keyboard event listeners for incident tagging (`⌃⌥⌘M`, `⌃⌥⌘N`) and dataset labeling keys.
+    - `Pipeline.swift`: Camera frame capture, hand tracking, engine routing, bimanual zoom calculations, intentionality gating overlay presentation.
+    - `GateVerification.swift`: Intentionality gating and telemetry test harness (`runGateVerification`).
+    - `main.swift`: Trimmed down to clean, compact entry point handling CLI routing (`--replay`, `--test-gates`) and `NSApplication` startup.
+  - Refactored `GestureEngine.process(_:)` in `GestureFlowApp/Sources/GestureFlow/Tracking/GestureEngine.swift`:
+    - Separated into ordered private helper methods: `updateSuppressionState`, `updateHandKinematics`, `evaluateSwipe`, `evaluatePinchDock`, `evaluateStandby`, `evaluateArmed`, `evaluateDockScrub`, `handleHandLost`.
+    - Decomposed compound boolean chains (>4 terms) into clear intermediate named conditions.
+    - Preserved exact execution and early-return semantics.
+- Verification & Benchmarks:
+  - Byte-for-byte golden replay parity:
+    - `diff -u tools/golden/synthetic_pinch.golden.jsonl /tmp/after_synthetic_pinch.jsonl`: Identical (diff empty, code 0).
+    - `diff -u tools/golden/synthetic_swipe_left.golden.jsonl /tmp/after_synthetic_swipe_left.jsonl`: Identical (diff empty, code 0).
+  - Test suites: `python3 -m unittest tools/test_replay.py tools/test_eval_gestures.py -v`: 22/22 tests passing.
+  - Clean build benchmark (from scratch):
+    - Pre-refactor: `Build complete! (492.77s) (swift build 239.34s user 49.99s system)`
+    - Post-refactor: `Build complete! (389.52s) (swift build 240.51s user 46.06s system)`
+    - Clean build speedup: ~103.25s reduction (~21.0% faster clean compilation).
+    - Incremental rebuild speedup: `21.32s`.
+- Open issues: none
+
+
