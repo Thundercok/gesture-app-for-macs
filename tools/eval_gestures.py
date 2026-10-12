@@ -72,6 +72,41 @@ PREDICTED_TO_MACRO = {
     "spatial_zoom": "spatial_zoom"
 }
 
+FINE_DIRECTIONAL_CLASSES = [
+    "swipe_left",
+    "swipe_right",
+    "swipe_up",
+    "swipe_down",
+    "scroll_down",
+    "scroll_up",
+]
+
+LABEL_TO_FINE = {
+    "swipe_left": "swipe_left",
+    "swipe_right": "swipe_right",
+    "swipe_up": "swipe_up",
+    "swipe_down": "swipe_down",
+    "2": "swipe_left",
+    "3": "swipe_right",
+    "4": "swipe_up",
+    "5": "swipe_down",
+
+    "scroll_down": "scroll_down",
+    "scroll_up": "scroll_up",
+    "flick": "scroll_down",
+    "6": "scroll_down",
+    "7": "scroll_up",
+
+    "pinch_dock": "pinch_dock",
+    "pinch": "pinch_dock",
+    "dock": "pinch_dock",
+    "1": "pinch_dock",
+
+    "zoom": "spatial_zoom",
+    "spatial_zoom": "spatial_zoom",
+    "8": "spatial_zoom",
+}
+
 
 def load_dataset(filepath: str) -> List[Dict[str, Any]]:
     """Loads a JSONL dataset file, skipping incident header if present."""
@@ -244,18 +279,38 @@ def _ts(rec: Dict[str, Any]) -> float:
     return float(rec.get("frameIndex", 0)) / 30.0
 
 
-def extract_events(records: List[Dict[str, Any]]) -> List[Tuple[float, str]]:
-    """Discrete fired events: explicit firedIntent, plus pinch_dock state rising edges."""
-    events: List[Tuple[float, str]] = []
+def extract_events(records: List[Dict[str, Any]]) -> List[Tuple[float, str, str]]:
+    """Discrete fired events: explicit firedIntent/firedAction, plus pinch_dock state rising edges.
+    
+    Returns list of (timestamp, macro_class, fine_action).
+    """
+    events: List[Tuple[float, str, str]] = []
     prev_pinch = False
     for rec in records:
         t = _ts(rec)
-        fired = str(rec.get("firedIntent", "")).lower()
-        if fired and fired in PREDICTED_TO_MACRO and PREDICTED_TO_MACRO[fired] != "idle":
-            events.append((t, PREDICTED_TO_MACRO[fired]))
+        fired_intent = str(rec.get("firedIntent", "")).lower()
+        fired_action = str(rec.get("firedAction", "")).lower()
+
+        if fired_action:
+            macro = LABEL_TO_MACRO.get(fired_action, "")
+            if not macro and fired_intent:
+                macro = PREDICTED_TO_MACRO.get(fired_intent, "")
+            if macro and macro != "idle":
+                fine = LABEL_TO_FINE.get(fired_action, fired_action)
+                events.append((t, macro, fine))
+        elif fired_intent:
+            if fired_intent in PREDICTED_TO_MACRO and PREDICTED_TO_MACRO[fired_intent] != "idle":
+                macro = PREDICTED_TO_MACRO[fired_intent]
+                fine = LABEL_TO_FINE.get(fired_intent, macro)
+                events.append((t, macro, fine))
+            elif fired_intent in LABEL_TO_MACRO and LABEL_TO_MACRO[fired_intent] != "idle":
+                macro = LABEL_TO_MACRO[fired_intent]
+                fine = LABEL_TO_FINE.get(fired_intent, fired_intent)
+                events.append((t, macro, fine))
+
         pinch_now = str(rec.get("predictedIntent", "")).lower() == "pinch_dock"
         if pinch_now and not prev_pinch:
-            events.append((t, "pinch_dock"))
+            events.append((t, "pinch_dock", "pinch_dock"))
         prev_pinch = pinch_now
     return events
 
@@ -282,6 +337,23 @@ def build_windows(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return windows
 
 
+def is_event_match(event: Tuple[float, str, str], window: Dict[str, Any]) -> bool:
+    """Checks whether fired event matches the ground truth window.
+    
+    If both window and event carry directional detail, directions must match.
+    If either lacks directional detail (e.g. legacy recording), macro match suffices.
+    """
+    _, e_macro, e_fine = event
+    w_macro = window.get("macro")
+    if e_macro != w_macro:
+        return False
+    w_raw = window.get("raw", "")
+    w_fine = LABEL_TO_FINE.get(w_raw, w_macro)
+    if w_fine in FINE_DIRECTIONAL_CLASSES and e_fine in FINE_DIRECTIONAL_CLASSES:
+        return w_fine == e_fine
+    return True
+
+
 def evaluate_events(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     records = sorted(records, key=_ts)
     events = extract_events(records)
@@ -290,37 +362,56 @@ def evaluate_events(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     classes = [c for c in CANONICAL_CLASSES if c != "idle"]
     per_class = {c: {"windows": 0, "hit": 0, "miss": 0, "wrong": 0, "double_fire": 0, "latencies": []} for c in classes}
     confusion: Dict[str, Dict[str, int]] = {c: defaultdict(int) for c in classes}   # true -> fired class / "none"
+    direction_confusion: Dict[str, Dict[str, int]] = {c: defaultdict(int) for c in FINE_DIRECTIONAL_CLASSES}
     used = set()
 
     for idx, w in enumerate(windows):
         if w["macro"] is None or w["macro"] == "idle":
             continue
         cls = w["macro"]
+        w_raw = w.get("raw", "")
+        w_fine = LABEL_TO_FINE.get(w_raw, cls)
+        is_dir = w_fine in FINE_DIRECTIONAL_CLASSES
+
         lo, hi = w["t0"], w["t1"] + EVENT_GRACE_S
         in_win = [(i, e) for i, e in enumerate(events) if lo <= e[0] <= hi]
         for i, _ in in_win:
             used.add(i)
         pc = per_class[cls]
         pc["windows"] += 1
-        correct = [e for _, e in in_win if e[1] == cls]
-        wrong = [e for _, e in in_win if e[1] != cls]
+
+        correct = [e for _, e in in_win if is_event_match(e, w)]
+        wrong = [e for _, e in in_win if not is_event_match(e, w)]
+
         if correct:
             pc["hit"] += 1
             pc["latencies"].append(correct[0][0] - w["t0"])
             confusion[cls][cls] += 1
+            if is_dir:
+                direction_confusion[w_fine][correct[0][2]] += 1
             if cls != "pinch_dock" and len(correct) > 1:
                 pc["double_fire"] += 1
         else:
             if wrong:
                 pc["wrong"] += 1
-                confusion[cls][wrong[0][1]] += 1
+                we = wrong[0]
+                fired_col = we[1] if we[1] != cls else we[2]
+                confusion[cls][fired_col] += 1
+                if is_dir:
+                    direction_confusion[w_fine][we[2]] += 1
             else:
                 pc["miss"] += 1
                 confusion[cls]["none"] += 1
-        # Any additional wrong-class fire alongside a correct one is a clash symptom
+                if is_dir:
+                    direction_confusion[w_fine]["none"] += 1
+
+        # Any additional wrong-class or wrong-dir fire alongside a correct one is a clash symptom
         if correct and wrong:
-            for e in wrong:
-                confusion[cls][e[1]] += 1
+            for we in wrong:
+                fired_col = we[1] if we[1] != cls else we[2]
+                confusion[cls][fired_col] += 1
+                if is_dir:
+                    direction_confusion[w_fine][we[2]] += 1
 
     # Idle: every fire not attributed to a gesture window and lying in idle time is a false trigger
     idle_time = 0.0
@@ -330,7 +421,7 @@ def evaluate_events(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             idle_time += max(0.0, w["t1"] - w["t0"])
             idle_windows.append(w)
     false_triggers: Dict[str, int] = defaultdict(int)
-    for i, (t, c) in enumerate(events):
+    for i, (t, c, act) in enumerate(events):
         if i in used:
             continue
         if any(w["t0"] <= t <= w["t1"] + EVENT_GRACE_S for w in idle_windows):
@@ -341,6 +432,7 @@ def evaluate_events(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "per_class": per_class,
         "confusion": {k: dict(v) for k, v in confusion.items()},
+        "direction_confusion": {k: dict(v) for k, v in direction_confusion.items()},
         "idle_seconds": idle_time,
         "idle_false_triggers": dict(false_triggers),
         "idle_false_triggers_per_min": far_per_min,
@@ -364,11 +456,38 @@ def print_event_report(res: Dict[str, Any]) -> None:
     print("-" * len(hdr))
     print("\nWhat fired during each true gesture (rows = what you did, cols = what the app did):")
     cols = [c for c in CANONICAL_CLASSES if c != "idle"] + ["none"]
-    print(f"{'true':<14} | " + " | ".join(f"{c[:10]:>10}" for c in cols))
+    extra_cols = []
+    for row in res["confusion"].values():
+        for k in row.keys():
+            if k not in cols and k not in extra_cols:
+                extra_cols.append(k)
+    all_cols = [c for c in CANONICAL_CLASSES if c != "idle"] + extra_cols + ["none"]
+    print(f"{'true':<14} | " + " | ".join(f"{c[:10]:>10}" for c in all_cols))
     for cls, row in res["confusion"].items():
         if res["per_class"][cls]["windows"] == 0:
             continue
-        print(f"{cls:<14} | " + " | ".join(f"{row.get(c, 0):>10}" for c in cols))
+        print(f"{cls:<14} | " + " | ".join(f"{row.get(c, 0):>10}" for c in all_cols))
+
+    dir_conf = res.get("direction_confusion", {})
+    has_dir_data = any(sum(row.values()) > 0 for row in dir_conf.values())
+    if has_dir_data:
+        print("\nDIRECTION CONFUSION (fine directional actions):")
+        dir_cols = FINE_DIRECTIONAL_CLASSES + ["none"]
+        extra_dir = []
+        for row in dir_conf.values():
+            for k in row.keys():
+                if k not in dir_cols and k not in extra_dir:
+                    extra_dir.append(k)
+        full_dir_cols = FINE_DIRECTIONAL_CLASSES + extra_dir + ["none"]
+        dhdr = f"{'true':<14} | " + " | ".join(f"{c[:10]:>10}" for c in full_dir_cols)
+        print(dhdr)
+        print("-" * len(dhdr))
+        for dcls in FINE_DIRECTIONAL_CLASSES:
+            row = dir_conf.get(dcls, {})
+            if sum(row.values()) == 0:
+                continue
+            print(f"{dcls:<14} | " + " | ".join(f"{row.get(c, 0):>10}" for c in full_dir_cols))
+
     print(f"\nIdle time scored: {res['idle_seconds']:.0f}s")
     print(f"False triggers while idle: {sum(res['idle_false_triggers'].values())} "
           f"({res['idle_false_triggers_per_min']:.2f}/min)  by class: {res['idle_false_triggers']}")

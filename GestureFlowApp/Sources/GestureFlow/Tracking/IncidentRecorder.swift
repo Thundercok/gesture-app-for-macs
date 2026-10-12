@@ -160,6 +160,7 @@ final class IncidentRecorder {
                         groundTruth: groundTruthLabel,
                         predictedIntent: f.predictedIntent,
                         firedIntent: f.firedIntent,
+                        firedAction: f.firedAction,
                         handDetected: f.handDetected,
                         fingerCount: f.fingerCount,
                         isPinching: f.isPinching,

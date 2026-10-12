@@ -250,7 +250,7 @@ final class ScrollEngine {
                 resetStroke()
                 cooldownUntilTimestamp = nowTimestamp + 0.15
                 stationaryFramesCount = 0
-                IntentArbiter.shared.commitAction(gesture: .airScroll, cooldown: 0.15, now: nowTimestamp)
+                IntentArbiter.shared.commitAction(gesture: .airScroll, action: "scroll_brake", cooldown: 0.15, now: nowTimestamp)
                 return
             }
         }
@@ -367,7 +367,8 @@ final class ScrollEngine {
 
         // Set refractory cooldown to swallow the return recoil movement
         cooldownUntilTimestamp = nowTimestamp + recoilCooldownDuration
-        IntentArbiter.shared.commitAction(gesture: .airScroll, cooldown: 0.25, now: nowTimestamp)
+        let flickAction = direction == .up ? "scroll_down" : "scroll_up"
+        IntentArbiter.shared.commitAction(gesture: .airScroll, action: flickAction, cooldown: 0.25, now: nowTimestamp)
 
         // Notify UI and listeners
         let actionName = direction == .up ? "Lướt xuống ↓" : "Lướt lên ↑"

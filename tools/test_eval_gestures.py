@@ -13,15 +13,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import eval_gestures as ev  # noqa: E402
 
 
-def frames(label, t0, t1, fired_at=None, fired="swipe", predicted="idle", fps=30):
+def frames(label, t0, t1, fired_at=None, fired="swipe", fired_action="", predicted="idle", fps=30):
     out = []
     n = int((t1 - t0) * fps)
     for i in range(n):
         t = t0 + i / fps
         f = ""
+        fa = ""
         if fired_at is not None and abs(t - fired_at) < 0.5 / fps:
             f = fired
-        out.append({"timestamp": t, "groundTruth": label, "predictedIntent": predicted, "firedIntent": f})
+            fa = fired_action
+        out.append({"timestamp": t, "groundTruth": label, "predictedIntent": predicted, "firedIntent": f, "firedAction": fa})
     return out
 
 
@@ -73,6 +75,52 @@ class EventScorer(unittest.TestCase):
         recs = frames("pinch_dock", 0, 3.2, predicted="pinch_dock")
         r = ev.evaluate_events(recs)["per_class"]["pinch_dock"]
         self.assertEqual((r["hit"], r["double_fire"]), (1, 0))
+
+    def test_direction_mismatch_is_wrong_not_hit(self):
+        # user swipes physical left, app fires swipe_right
+        recs = frames("swipe_left", 0, 1.6, fired_at=0.5, fired="swipe", fired_action="swipe_right")
+        res = ev.evaluate_events(recs)
+        self.assertEqual(res["per_class"]["swipe"]["hit"], 0)
+        self.assertEqual(res["per_class"]["swipe"]["wrong"], 1)
+        self.assertEqual(res["confusion"]["swipe"].get("swipe_right"), 1)
+        self.assertEqual(res["direction_confusion"]["swipe_left"].get("swipe_right"), 1)
+
+    def test_direction_match_with_fired_action(self):
+        # user swipes physical left, app fires swipe_left
+        recs = frames("swipe_left", 0, 1.6, fired_at=0.5, fired="swipe", fired_action="swipe_left")
+        res = ev.evaluate_events(recs)
+        self.assertEqual(res["per_class"]["swipe"]["hit"], 1)
+        self.assertEqual(res["per_class"]["swipe"]["wrong"], 0)
+        self.assertEqual(res["direction_confusion"]["swipe_left"].get("swipe_left"), 1)
+
+    def test_vertical_swipe_direction_confusion(self):
+        # user swipes down (Desktop), app fires swipe_up (Mission Control)
+        recs = frames("swipe_down", 0, 1.6, fired_at=0.5, fired="swipe", fired_action="swipe_up")
+        res = ev.evaluate_events(recs)
+        self.assertEqual(res["per_class"]["swipe"]["hit"], 0)
+        self.assertEqual(res["per_class"]["swipe"]["wrong"], 1)
+        self.assertEqual(res["direction_confusion"]["swipe_down"].get("swipe_up"), 1)
+
+    def test_scroll_direction_matching_and_mismatch(self):
+        # hit scroll_down
+        recs_hit = frames("scroll_down", 0, 1.6, fired_at=0.5, fired="air_scroll", fired_action="scroll_down")
+        res_hit = ev.evaluate_events(recs_hit)
+        self.assertEqual(res_hit["per_class"]["air_scroll"]["hit"], 1)
+        self.assertEqual(res_hit["direction_confusion"]["scroll_down"].get("scroll_down"), 1)
+
+        # mismatch: user did scroll_down, app fired scroll_up
+        recs_mis = frames("scroll_down", 0, 1.6, fired_at=0.5, fired="air_scroll", fired_action="scroll_up")
+        res_mis = ev.evaluate_events(recs_mis)
+        self.assertEqual(res_mis["per_class"]["air_scroll"]["hit"], 0)
+        self.assertEqual(res_mis["per_class"]["air_scroll"]["wrong"], 1)
+        self.assertEqual(res_mis["direction_confusion"]["scroll_down"].get("scroll_up"), 1)
+
+    def test_legacy_macro_fallback_when_action_unspecified(self):
+        # Old recording has fired="swipe", no firedAction. Still counted as hit for swipe_left window.
+        recs = frames("swipe_left", 0, 1.6, fired_at=0.5, fired="swipe")
+        res = ev.evaluate_events(recs)
+        self.assertEqual(res["per_class"]["swipe"]["hit"], 1)
+        self.assertEqual(res["per_class"]["swipe"]["wrong"], 0)
 
 
 class IncidentEvaluationTests(unittest.TestCase):

@@ -885,6 +885,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             let seq = IntentArbiter.shared.commitSequence
             let fired: String = (seq != self.lastRecordedCommitSequence) ? IntentArbiter.shared.lastCommitted.rawValue : ""
+            let firedAction: String = (seq != self.lastRecordedCommitSequence) ? IntentArbiter.shared.lastCommittedActionName : ""
             if seq != self.lastRecordedCommitSequence {
                 self.lastRecordedCommitSequence = seq
                 IncidentRecorder.shared.markAutoFire(intent: fired)
@@ -897,6 +898,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 secondary: secondaryLandmarks,
                 predictedIntent: IntentArbiter.shared.currentIntent.rawValue,
                 firedIntent: fired,
+                firedAction: firedAction,
                 groundTruth: DatasetRecorder.shared.currentLabel
             )
 
@@ -907,7 +909,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     primary: landmarks,
                     secondary: secondaryLandmarks,
                     predictedIntent: IntentArbiter.shared.currentIntent.rawValue,
-                    firedIntent: fired
+                    firedIntent: fired,
+                    firedAction: firedAction
                 )
             }
 

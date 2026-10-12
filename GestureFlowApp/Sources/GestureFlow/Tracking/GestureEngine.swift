@@ -278,7 +278,8 @@ final class GestureEngine {
                         lastSwipeTime = nowTimestamp
                         swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
                         swipeHistory.removeAll(keepingCapacity: true)
-                        IntentArbiter.shared.commitAction(gesture: .swipe, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
+                        let swipeAction = dx < 0 ? "swipe_left" : "swipe_right"
+                        IntentArbiter.shared.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
                         return
                     }
 
@@ -301,7 +302,8 @@ final class GestureEngine {
                         lastSwipeTime = nowTimestamp
                         swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
                         swipeHistory.removeAll(keepingCapacity: true)
-                        IntentArbiter.shared.commitAction(gesture: .swipe, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
+                        let swipeAction = dy > 0 ? "swipe_up" : "swipe_down"
+                        IntentArbiter.shared.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
                         return
                     }
                 }
@@ -463,7 +465,7 @@ final class GestureEngine {
 
                 onDockSelectIndex?(commitIndex, .zero)
                 commitSwitch(centroid: currentPoint)
-                IntentArbiter.shared.commitAction(gesture: .pinchDock, cooldown: 0.38, now: nowTimestamp)
+                IntentArbiter.shared.commitAction(gesture: .pinchDock, action: "pinch_dock", cooldown: 0.38, now: nowTimestamp)
                 lastDx = 0.0
                 filteredVelocity = 0.0
                 state = .cooldown(until: now.addingTimeInterval(0.30))
@@ -555,7 +557,7 @@ final class GestureEngine {
                 let commitIndex = (elapsedSinceChange < 0.12) ? lastStableIndex : selectedIndex
                 onDockSelectIndex?(commitIndex, .zero)
                 commitSwitch(centroid: .zero)
-                IntentArbiter.shared.commitAction(gesture: .pinchDock, cooldown: 0.35, now: now.timeIntervalSinceReferenceDate)
+                IntentArbiter.shared.commitAction(gesture: .pinchDock, action: "pinch_dock", cooldown: 0.35, now: now.timeIntervalSinceReferenceDate)
                 state = .cooldown(until: now.addingTimeInterval(0.35))
                 return
             }

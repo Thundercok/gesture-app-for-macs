@@ -21,6 +21,7 @@ final class IntentArbiter {
     private var lastActionTimestamp: TimeInterval = 0.0
     private var commitSequenceStorage: Int = 0
     private var lastCommittedStorage: GestureIntent = .idle
+    private var lastCommittedActionStorage: String = ""
 
     let defaultCooldownDuration: TimeInterval = 0.380
 
@@ -57,7 +58,7 @@ final class IntentArbiter {
         }
     }
 
-    func commitAction(gesture: GestureIntent, cooldown: TimeInterval? = nil, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+    func commitAction(gesture: GestureIntent, action: String = "", cooldown: TimeInterval? = nil, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         lock.lock()
         defer { lock.unlock() }
         let duration = cooldown ?? defaultCooldownDuration
@@ -66,6 +67,7 @@ final class IntentArbiter {
         activeIntent = .cooldown
         commitSequenceStorage += 1
         lastCommittedStorage = gesture
+        lastCommittedActionStorage = action.isEmpty ? gesture.rawValue : action
     }
 
     /// Monotonic counter incremented on every committed (fired) action.
@@ -81,6 +83,13 @@ final class IntentArbiter {
         lock.lock()
         defer { lock.unlock() }
         return lastCommittedStorage
+    }
+
+    /// The concrete action name of the most recently committed action (e.g. "swipe_left", "scroll_down").
+    var lastCommittedActionName: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastCommittedActionStorage
     }
 
     func forceReset() {

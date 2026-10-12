@@ -32,7 +32,7 @@
 
 ## WP2 — GestureTuning, Safe/Balanced/Sensitive presets, sensitivity control — 2026-10-12
 - Status: DONE
-- Commit: (pending)
+- Commit: 8f80d3e
 - What changed:
   - Created `Tracking/GestureTuning.swift` encapsulating motion thresholds, dwelling parameters, cooldowns, and presets (Safe, Balanced, Sensitive) with thread-safe persistence in `UserDefaults` (`gf.tuning.v1`).
   - `balanced` preset numerically matches the exact baseline constants (swipe displacement 0.065, velocity 0.50, dominance 1.30, calm hand 0.42, post-pinch guard 0.35s, swipe cooldown 0.45s, scroll flick min velocity 0.42).
@@ -43,4 +43,20 @@
   - `swift build`: clean in 8.25s (0 errors, 0 warnings).
   - `python3 -m unittest tools/test_eval_gestures.py -v`: 12/12 passed in 0.026s.
   - Manual runtime check: NOT RUN (needs user).
+- Open issues: none
+
+## WP3 — Direction-aware fired events — 2026-10-12
+- Status: DONE
+- Commit: c8afced
+- What changed:
+  - Added `firedAction: String` to `HandFrameRecord` with backward-compatible JSON decoding.
+  - Extended `IntentArbiter.commitAction(...)` with concrete action string parameter and exposed `lastCommittedActionName`.
+  - Wired explicit physical motion names (`"swipe_left"`, `"swipe_right"`, `"swipe_up"`, `"swipe_down"`, `"pinch_dock"`, `"scroll_down"`, `"scroll_up"`, `"scroll_brake"`) across `GestureEngine.swift`, `ScrollEngine.swift`, and `main.swift`.
+  - Updated `DatasetRecorder.recordFrame(...)` and `IncidentRecorder.dumpFrames(...)` to record and persist `firedAction`.
+  - Upgraded `tools/eval_gestures.py` event evaluation to evaluate directional matching (`swipe_left` vs `swipe_right`, `scroll_down` vs `scroll_up`), added a dedicated Direction Confusion Table, and maintained fallback to macro classes on legacy recordings.
+  - Added 5 unit tests in `tools/test_eval_gestures.py` verifying directional hits, directional mismatches scored as `wrong`, vertical swipe confusion, scroll direction matching, and legacy macro fallback (17/17 tests passing).
+- Verification:
+  - `swift build`: clean (0 errors, 0 warnings).
+  - `python3 -m unittest tools/test_eval_gestures.py -v`: 17/17 passed in 0.146s.
+  - `python3 tools/eval_gestures.py --test`: clean exit 0.
 - Open issues: none

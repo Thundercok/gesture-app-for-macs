@@ -13,6 +13,8 @@ struct HandFrameRecord: Codable {
     let predictedIntent: String
     /// Non-empty only on the frame where an action was actually committed (event, not state).
     let firedIntent: String
+    /// Concrete action name including direction (e.g. "swipe_left", "scroll_down").
+    let firedAction: String
     let handDetected: Bool
     let fingerCount: Int
     let isPinching: Bool
@@ -22,6 +24,65 @@ struct HandFrameRecord: Codable {
     let facingCamera: Double
     let primaryPoints: [LandmarkPointRecord]
     let secondaryPoints: [LandmarkPointRecord]?
+
+    enum CodingKeys: String, CodingKey {
+        case timestamp, frameIndex, groundTruth, predictedIntent, firedIntent, firedAction
+        case handDetected, fingerCount, isPinching, isTwoFingers, isRaisedHand
+        case estimatedDepth, facingCamera, primaryPoints, secondaryPoints
+    }
+
+    init(
+        timestamp: Double,
+        frameIndex: Int,
+        groundTruth: String,
+        predictedIntent: String,
+        firedIntent: String,
+        firedAction: String = "",
+        handDetected: Bool,
+        fingerCount: Int,
+        isPinching: Bool,
+        isTwoFingers: Bool,
+        isRaisedHand: Bool,
+        estimatedDepth: Double,
+        facingCamera: Double,
+        primaryPoints: [LandmarkPointRecord],
+        secondaryPoints: [LandmarkPointRecord]?
+    ) {
+        self.timestamp = timestamp
+        self.frameIndex = frameIndex
+        self.groundTruth = groundTruth
+        self.predictedIntent = predictedIntent
+        self.firedIntent = firedIntent
+        self.firedAction = firedAction
+        self.handDetected = handDetected
+        self.fingerCount = fingerCount
+        self.isPinching = isPinching
+        self.isTwoFingers = isTwoFingers
+        self.isRaisedHand = isRaisedHand
+        self.estimatedDepth = estimatedDepth
+        self.facingCamera = facingCamera
+        self.primaryPoints = primaryPoints
+        self.secondaryPoints = secondaryPoints
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decode(Double.self, forKey: .timestamp)
+        frameIndex = try container.decode(Int.self, forKey: .frameIndex)
+        groundTruth = try container.decode(String.self, forKey: .groundTruth)
+        predictedIntent = try container.decode(String.self, forKey: .predictedIntent)
+        firedIntent = try container.decode(String.self, forKey: .firedIntent)
+        firedAction = try container.decodeIfPresent(String.self, forKey: .firedAction) ?? ""
+        handDetected = try container.decode(Bool.self, forKey: .handDetected)
+        fingerCount = try container.decode(Int.self, forKey: .fingerCount)
+        isPinching = try container.decode(Bool.self, forKey: .isPinching)
+        isTwoFingers = try container.decode(Bool.self, forKey: .isTwoFingers)
+        isRaisedHand = try container.decode(Bool.self, forKey: .isRaisedHand)
+        estimatedDepth = try container.decode(Double.self, forKey: .estimatedDepth)
+        facingCamera = try container.decode(Double.self, forKey: .facingCamera)
+        primaryPoints = try container.decode([LandmarkPointRecord].self, forKey: .primaryPoints)
+        secondaryPoints = try container.decodeIfPresent([LandmarkPointRecord].self, forKey: .secondaryPoints)
+    }
 }
 
 func makeFrameRecord(
@@ -31,6 +92,7 @@ func makeFrameRecord(
     secondary: HandLandmarks?,
     predictedIntent: String,
     firedIntent: String = "",
+    firedAction: String = "",
     groundTruth: String
 ) -> HandFrameRecord {
     let pPoints = primary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) } ?? []
@@ -42,6 +104,7 @@ func makeFrameRecord(
         groundTruth: groundTruth,
         predictedIntent: predictedIntent,
         firedIntent: firedIntent,
+        firedAction: firedAction,
         handDetected: primary != nil,
         fingerCount: primary?.fingerCount ?? 0,
         isPinching: primary?.isPinching ?? false,
@@ -155,7 +218,8 @@ final class DatasetRecorder {
         primary: HandLandmarks?,
         secondary: HandLandmarks?,
         predictedIntent: String,
-        firedIntent: String = ""
+        firedIntent: String = "",
+        firedAction: String = ""
     ) {
         guard isRecording, let handle = fileHandle else { return }
 
@@ -166,6 +230,7 @@ final class DatasetRecorder {
             secondary: secondary,
             predictedIntent: predictedIntent,
             firedIntent: firedIntent,
+            firedAction: firedAction,
             groundTruth: currentLabel
         )
 
