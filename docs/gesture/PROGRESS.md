@@ -47,7 +47,7 @@
 
 ## WP3 — Direction-aware fired events — 2026-10-12
 - Status: DONE
-- Commit: c8afced
+- Commit: fd23dea
 - What changed:
   - Added `firedAction: String` to `HandFrameRecord` with backward-compatible JSON decoding.
   - Extended `IntentArbiter.commitAction(...)` with concrete action string parameter and exposed `lastCommittedActionName`.
