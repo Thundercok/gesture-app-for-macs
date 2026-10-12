@@ -34,7 +34,7 @@ final class IntentArbiter {
         lock.lock()
         defer { lock.unlock() }
 
-        let currentTime = now ?? clock.uptime
+        let currentTime = now ?? clock.now.timeIntervalSinceReferenceDate
         if currentTime < cooldownUntil {
             return false
         }
@@ -64,7 +64,7 @@ final class IntentArbiter {
     func commitAction(gesture: GestureIntent, action: String = "", cooldown: TimeInterval? = nil, now: TimeInterval? = nil) {
         lock.lock()
         defer { lock.unlock() }
-        let currentTime = now ?? clock.uptime
+        let currentTime = now ?? clock.now.timeIntervalSinceReferenceDate
         let duration = cooldown ?? defaultCooldownDuration
         cooldownUntil = currentTime + duration
         lastActionTimestamp = currentTime

@@ -1,9 +1,20 @@
 import Foundation
 import CoreGraphics
 
-struct LandmarkPointRecord: Codable {
+struct LandmarkPointRecord: Codable, Equatable {
     let x: Double
     let y: Double
+}
+
+struct FaceBBoxRecord: Codable, Equatable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+
+    var cgRect: CGRect {
+        CGRect(x: x, y: y, width: width, height: height)
+    }
 }
 
 struct HandFrameRecord: Codable {
@@ -24,11 +35,17 @@ struct HandFrameRecord: Codable {
     let facingCamera: Double
     let primaryPoints: [LandmarkPointRecord]
     let secondaryPoints: [LandmarkPointRecord]?
+    let confidence: [Float]?
+    let faceBBox: FaceBBoxRecord?
+    let isInInteractionRange: Bool?
+    let handCentroid: LandmarkPointRecord?
+    let tiltAngleDegrees: Double?
 
     enum CodingKeys: String, CodingKey {
         case timestamp, frameIndex, groundTruth, predictedIntent, firedIntent, firedAction
         case handDetected, fingerCount, isPinching, isTwoFingers, isRaisedHand
         case estimatedDepth, facingCamera, primaryPoints, secondaryPoints
+        case confidence, confidences, faceBBox, isInInteractionRange, handCentroid, tiltAngleDegrees
     }
 
     init(
@@ -46,7 +63,12 @@ struct HandFrameRecord: Codable {
         estimatedDepth: Double,
         facingCamera: Double,
         primaryPoints: [LandmarkPointRecord],
-        secondaryPoints: [LandmarkPointRecord]?
+        secondaryPoints: [LandmarkPointRecord]?,
+        confidence: [Float]? = nil,
+        faceBBox: FaceBBoxRecord? = nil,
+        isInInteractionRange: Bool? = nil,
+        handCentroid: LandmarkPointRecord? = nil,
+        tiltAngleDegrees: Double? = nil
     ) {
         self.timestamp = timestamp
         self.frameIndex = frameIndex
@@ -63,6 +85,11 @@ struct HandFrameRecord: Codable {
         self.facingCamera = facingCamera
         self.primaryPoints = primaryPoints
         self.secondaryPoints = secondaryPoints
+        self.confidence = confidence
+        self.faceBBox = faceBBox
+        self.isInInteractionRange = isInInteractionRange
+        self.handCentroid = handCentroid
+        self.tiltAngleDegrees = tiltAngleDegrees
     }
 
     init(from decoder: Decoder) throws {
@@ -82,6 +109,58 @@ struct HandFrameRecord: Codable {
         facingCamera = try container.decode(Double.self, forKey: .facingCamera)
         primaryPoints = try container.decode([LandmarkPointRecord].self, forKey: .primaryPoints)
         secondaryPoints = try container.decodeIfPresent([LandmarkPointRecord].self, forKey: .secondaryPoints)
+
+        if let conf = try? container.decodeIfPresent([Float].self, forKey: .confidence) {
+            confidence = conf
+        } else if let confs = try? container.decodeIfPresent([Float].self, forKey: .confidences) {
+            confidence = confs
+        } else {
+            confidence = nil
+        }
+
+        if let bbox = try? container.decodeIfPresent(FaceBBoxRecord.self, forKey: .faceBBox) {
+            faceBBox = bbox
+        } else if let arr = try? container.decodeIfPresent([Double].self, forKey: .faceBBox), arr.count >= 4 {
+            faceBBox = FaceBBoxRecord(x: arr[0], y: arr[1], width: arr[2], height: arr[3])
+        } else {
+            faceBBox = nil
+        }
+
+        isInInteractionRange = try? container.decodeIfPresent(Bool.self, forKey: .isInInteractionRange)
+
+        if let centroid = try? container.decodeIfPresent(LandmarkPointRecord.self, forKey: .handCentroid) {
+            handCentroid = centroid
+        } else if let arr = try? container.decodeIfPresent([Double].self, forKey: .handCentroid), arr.count >= 2 {
+            handCentroid = LandmarkPointRecord(x: arr[0], y: arr[1])
+        } else {
+            handCentroid = nil
+        }
+
+        tiltAngleDegrees = try? container.decodeIfPresent(Double.self, forKey: .tiltAngleDegrees)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(frameIndex, forKey: .frameIndex)
+        try container.encode(groundTruth, forKey: .groundTruth)
+        try container.encode(predictedIntent, forKey: .predictedIntent)
+        try container.encode(firedIntent, forKey: .firedIntent)
+        try container.encode(firedAction, forKey: .firedAction)
+        try container.encode(handDetected, forKey: .handDetected)
+        try container.encode(fingerCount, forKey: .fingerCount)
+        try container.encode(isPinching, forKey: .isPinching)
+        try container.encode(isTwoFingers, forKey: .isTwoFingers)
+        try container.encode(isRaisedHand, forKey: .isRaisedHand)
+        try container.encode(estimatedDepth, forKey: .estimatedDepth)
+        try container.encode(facingCamera, forKey: .facingCamera)
+        try container.encode(primaryPoints, forKey: .primaryPoints)
+        try container.encodeIfPresent(secondaryPoints, forKey: .secondaryPoints)
+        try container.encodeIfPresent(confidence, forKey: .confidence)
+        try container.encodeIfPresent(faceBBox, forKey: .faceBBox)
+        try container.encodeIfPresent(isInInteractionRange, forKey: .isInInteractionRange)
+        try container.encodeIfPresent(handCentroid, forKey: .handCentroid)
+        try container.encodeIfPresent(tiltAngleDegrees, forKey: .tiltAngleDegrees)
     }
 }
 
@@ -93,10 +172,17 @@ func makeFrameRecord(
     predictedIntent: String,
     firedIntent: String = "",
     firedAction: String = "",
-    groundTruth: String
+    groundTruth: String,
+    confidence: [Float]? = nil
 ) -> HandFrameRecord {
     let pPoints = primary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) } ?? []
     let sPoints = secondary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) }
+    let faceRec: FaceBBoxRecord? = primary?.faceBBox.map {
+        FaceBBoxRecord(x: Double($0.origin.x), y: Double($0.origin.y), width: Double($0.size.width), height: Double($0.size.height))
+    }
+    let centroidRec: LandmarkPointRecord? = primary.map {
+        LandmarkPointRecord(x: Double($0.handCentroid.x), y: Double($0.handCentroid.y))
+    }
 
     return HandFrameRecord(
         timestamp: timestamp,
@@ -113,7 +199,12 @@ func makeFrameRecord(
         estimatedDepth: Double(primary?.estimatedDepth ?? 0.0),
         facingCamera: primary?.facingCamera ?? 1.0,
         primaryPoints: pPoints,
-        secondaryPoints: sPoints
+        secondaryPoints: sPoints,
+        confidence: confidence ?? (primary != nil ? Array(repeating: 1.0, count: 21) : nil),
+        faceBBox: faceRec,
+        isInInteractionRange: primary?.isInInteractionRange,
+        handCentroid: centroidRec,
+        tiltAngleDegrees: primary?.tiltAngleDegrees
     )
 }
 
