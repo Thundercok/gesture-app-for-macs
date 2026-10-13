@@ -66,6 +66,11 @@ extension AppDelegate {
         sensitivityParentItem.submenu = sensitivityMenu
         menu.addItem(sensitivityParentItem)
 
+        let calibrateItem = NSMenuItem(title: "Hiệu chuẩn (60s Calibration)...", action: #selector(toggleCalibrationWizard), keyEquivalent: "")
+        calibrateItem.target = self
+        calibrateItem.toolTip = "Đo kích thước bàn tay và tốc độ vuốt tự nhiên (5 lần) trong 60 giây để tự động điều chỉnh ngưỡng cử chỉ."
+        menu.addItem(calibrateItem)
+
         let modeMenu = NSMenu()
         let minimalItem = NSMenuItem(title: "Tối giản (Vector)", action: #selector(setModeMinimal), keyEquivalent: "")
         minimalItem.target = self
@@ -164,6 +169,21 @@ extension AppDelegate {
         sender.state = appState.undoOnMisfire ? .on : .off
         let status = appState.undoOnMisfire ? "BẬT" : "TẮT"
         appState.setAction("Hoàn tác khi bắn sai: \(status)")
+    }
+
+    @objc func toggleCalibrationWizard() {
+        let wizard = CalibrationWizard.shared
+        if wizard.isRunning {
+            wizard.cancel()
+        } else {
+            wizard.onStatus = { [weak self] status in
+                self?.appState.setAction(status)
+            }
+            wizard.onFinish = { [weak self] _ in
+                self?.updateTuningMenuState()
+            }
+            wizard.start()
+        }
     }
 
     @objc func setTuningSafe(_ sender: NSMenuItem) {

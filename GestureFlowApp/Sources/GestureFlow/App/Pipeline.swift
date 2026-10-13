@@ -129,6 +129,10 @@ extension AppDelegate {
             let landmarks = multiHand?.primary
             let secondaryLandmarks = multiHand?.secondary
 
+            if CalibrationWizard.shared.isRunning {
+                CalibrationWizard.shared.ingest(landmarks: landmarks, timestamp: pts.seconds)
+            }
+
             // Route to active system mode engine:
             if self.appState.currentMode == .airScroll {
                 self.engine.forceDischarge()
