@@ -60,7 +60,7 @@ struct HUDView: View {
                     }
 
                     pillStatusView
-
+                    rejectReasonBadge
 
                     Spacer()
 
@@ -264,6 +264,7 @@ struct HUDView: View {
                                 }
 
                                 Spacer()
+                                rejectReasonBadge
 
                                 // Intentionality Gating Diagnostic Shield Badge
                                 if let reason = state.activeSuppressReason {
@@ -549,6 +550,19 @@ struct HUDView: View {
             return Color.white.opacity(0.80)
         } else {
             return Color.white.opacity(0.35)
+        }
+    }
+
+    @ViewBuilder
+    private var rejectReasonBadge: some View {
+        if state.handDetected, let reject = state.lastRejectReason {
+            Text(reject.displayLabel)
+                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                .foregroundColor(.yellow.opacity(0.85))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.black.opacity(0.65)))
+                .fixedSize()
         }
     }
 }

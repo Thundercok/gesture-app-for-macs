@@ -167,7 +167,27 @@ final class AppState: ObservableObject {
     @Published var isRecordingDataset: Bool = false
     @Published var datasetLabel: String = "idle"
 
+    // Why-not-recognised HUD Badge State (WP9.1)
+    @Published var lastRejectReason: RejectReason? = nil
+    private var rejectReasonTimer: AnyCancellable?
+
+    // Undo on Misfire Feedback Loop (WP9.2, default false)
+    @Published var undoOnMisfire: Bool = false
+
     private var actionTimer: AnyCancellable?
+
+    func setRejectReason(_ reason: RejectReason?) {
+        DispatchQueue.main.async {
+            self.lastRejectReason = reason
+            self.rejectReasonTimer?.cancel()
+            guard reason != nil else { return }
+            self.rejectReasonTimer = Just(())
+                .delay(for: .seconds(1.0), scheduler: RunLoop.main)
+                .sink { [weak self] in
+                    self?.lastRejectReason = nil
+                }
+        }
+    }
 
     func setAction(_ label: String) {
         DispatchQueue.main.async {

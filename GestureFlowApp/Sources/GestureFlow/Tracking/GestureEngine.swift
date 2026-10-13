@@ -150,8 +150,17 @@ final class GestureEngine {
     var onDockCancel: (() -> Void)?
     var onAction: ((_ title: String) -> Void)?
     var onSuppressStatus: ((_ reason: GateSuppressReason?) -> Void)?
+    var onRejectReason: ((_ reason: RejectReason?) -> Void)?
 
     private(set) var activeSuppressReason: GateSuppressReason?
+    private(set) var lastRejectReason: RejectReason?
+
+    private func recordReject(_ reason: RejectReason) {
+        lastRejectReason = reason
+        if handSpeed >= 0.22 {
+            onRejectReason?(reason)
+        }
+    }
 
     func process(_ landmarks: HandLandmarks?) {
         let now = clock.now
@@ -285,6 +294,17 @@ final class GestureEngine {
         let isEligibleForSwipe = isGatingClear && isInteractionValid && isPinchGuardClear && canSwipe
 
         guard isEligibleForSwipe else {
+            if activeSuppressReason == .faceProximity {
+                recordReject(.faceOverlap)
+            } else if activeSuppressReason == .edgeOnPalm {
+                recordReject(.edgeOnPalm)
+            } else if !canSwipe {
+                recordReject(.arbiterBusy(arbiter.currentIntent.rawValue))
+            } else if !isPinchGuardClear {
+                recordReject(.pinchGuard)
+            } else if !isPalmDwellSatisfied {
+                recordReject(.notStable)
+            }
             swipeHistory.removeAll(keepingCapacity: true)
             return false
         }
@@ -295,8 +315,13 @@ final class GestureEngine {
         }
 
         guard nowTimestamp > swipeCooldownUntil && swipeHistory.count >= 4 else {
+            if nowTimestamp <= swipeCooldownUntil {
+                recordReject(.cooldown)
+            }
             return false
         }
+
+        var candidateReject: RejectReason? = nil
 
         for offset in 3...min(7, swipeHistory.count - 1) {
             let oldSample = swipeHistory[swipeHistory.count - 1 - offset]
@@ -332,6 +357,7 @@ final class GestureEngine {
                 lastSwipeTime = nowTimestamp
                 swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
                 swipeHistory.removeAll(keepingCapacity: true)
+                lastRejectReason = nil
                 let swipeAction = dx < 0 ? "swipe_left" : "swipe_right"
                 arbiter.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
                 return true
@@ -357,10 +383,25 @@ final class GestureEngine {
                 lastSwipeTime = nowTimestamp
                 swipeCooldownUntil = nowTimestamp + tune.swipeCooldownSeconds
                 swipeHistory.removeAll(keepingCapacity: true)
+                lastRejectReason = nil
                 let swipeAction = dy > 0 ? "swipe_up" : "swipe_down"
                 arbiter.commitAction(gesture: .swipe, action: swipeAction, cooldown: tune.swipeCooldownSeconds, now: nowTimestamp)
                 return true
             }
+
+            if max(absDx, absDy) >= 0.03 {
+                if !hasHorizontalDisplacement && !hasVerticalDisplacement {
+                    candidateReject = .tooShort
+                } else if !hasHorizontalSpeed && !hasVerticalSpeed {
+                    candidateReject = .tooSlow
+                } else {
+                    candidateReject = .axisAmbiguous
+                }
+            }
+        }
+
+        if let reason = candidateReject {
+            recordReject(reason)
         }
         return false
     }

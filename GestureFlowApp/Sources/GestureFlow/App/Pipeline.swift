@@ -68,6 +68,10 @@ extension AppDelegate {
             }
         }
 
+        engine.onRejectReason = { [weak self] reason in
+            self?.appState.setRejectReason(reason)
+        }
+
         engine.onDockSelectIndex = { [weak self] index, delta in
             guard let self = self else { return }
             DispatchQueue.main.async {
