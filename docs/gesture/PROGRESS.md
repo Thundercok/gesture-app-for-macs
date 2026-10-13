@@ -131,4 +131,42 @@
     - Incremental rebuild speedup: `21.32s`.
 - Open issues: none
 
+## 2026-10-12: WP7 — Training Data Tooling + Posture Classifier in Shadow Mode
+
+- Commits:
+  - `02a5df8`: `feat(tools): feature export and posture trainer`
+  - `8a99d2b`: `feat(posture): shadow-mode classifier wrapper`
+- Status: **DONE (Code & Tooling Complete) / BLOCKED AT DATA GATE (`NEEDS-USER` for >=3 real sessions)**
+- Deliverables:
+  - Implemented `tools/export_features.py`:
+    - Pure Python stdlib feature exporter computing a canonical 56D vector (42 normalized landmark coordinates + 14 engineered distances/curl angles).
+    - Enforces translation invariance (wrist at origin), scale invariance (divided by wrist-to-middleMCP length), rotation invariance (aligned to vertical $+Y$), and handedness mirroring invariance (canonicalized to right-hand frame).
+    - Performs strict session/file-level train/test splitting (`split.json`), preventing frame-level temporal leakage.
+    - Maps ground-truth labels to 5 canonical posture classes (`none`, `open_palm`, `pinch`, `two_fingers`, `fist`).
+  - Implemented `tools/test_export_features.py`:
+    - 6 unit tests verifying translation, scale, in-plane rotation, and horizontal mirroring invariance on synthetic hands.
+  - Implemented `tools/train_posture.py`:
+    - Trains `MLPClassifier(hidden_layer_sizes=(64, 64), activation='relu')` on training sessions and evaluates per-class precision, recall, F1, and confusion matrix on held-out sessions.
+    - Enforces mandatory diversity gate: prints loud `INSUFFICIENT DIVERSITY` banner and refuses to export `PostureClassifier.mlmodel` when fewer than 3 distinct recording sessions exist.
+    - Exports Core ML NeuralNetwork via `coremltools` MIL builder when the gate passes.
+  - Created `docs/gesture/MODEL_CARD.md`:
+    - Documented model architecture, library versions (`scikit-learn 1.9.0`, `coremltools 9.0`, `numpy 2.5.1`), 56D feature specification, and promotion gate criteria.
+  - Implemented `GestureFlowApp/Sources/GestureFlow/Tracking/PostureClassifier.swift`:
+    - Loads `PostureClassifier.mlmodel` / `.mlmodelc` if present; otherwise acts as a safe no-op pass-through (`isAvailable == false`).
+    - Implements 5-frame majority vote smoothing + 3-frame hysteresis ($\ge 0.70$ confidence threshold).
+    - Runs in parallel to heuristic posture detection, logging `shadowPosture` and `shadowAgrees` in `HandFrameRecord` and `IncidentRecorder`.
+    - Added `GestureTuning.useLearnedPosture` (default `false`).
+  - Extended `tools/eval_gestures.py` with `--shadow` to report heuristic vs model disagreement matrices and user misfire alignment.
+- Verification:
+  - `swift build`: clean in 30.19s (0 errors, 0 warnings).
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v`: 29/29 tests passing in 0.640s.
+- Open issues / Gate:
+  - Model export and promotion gate (`useLearnedPosture = true`) remain intentionally halted at the data gate (`NEEDS-USER`: record $\ge 3$ sessions via `GestureFlow --guided`).
+
+## 2026-10-12: WP8 — Pretrained-Model Decision (Follow-up to WP4)
+
+- Status: **SKIPPED**
+- Reason: `skipped: WP4 recommended Option 4 (Lightweight MLP on normalized 2D landmarks, already implemented in WP7) over heavy external dependencies (MediaPipe / Core ML conversion), and real shadow evaluation data is pending user recordings (NEEDS-USER).`
+
+
 
