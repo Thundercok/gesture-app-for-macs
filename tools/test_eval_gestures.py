@@ -194,6 +194,27 @@ class IncidentEvaluationTests(unittest.TestCase):
             os.remove(gt_path)
             os.remove(rep_path)
 
+    def test_evaluate_shadow_disagreements_and_misfire_alignment(self):
+        import tempfile
+        records = [
+            {"isPinching": True, "isTwoFingers": False, "fingerCount": 2, "isRaisedHand": True, "shadowPosture": "pinch"},
+            {"isPinching": False, "isTwoFingers": False, "fingerCount": 5, "isRaisedHand": True, "shadowPosture": "open_palm"},
+            {"isPinching": True, "isTwoFingers": False, "fingerCount": 2, "isRaisedHand": True, "shadowPosture": "none"},
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "misfire_1.jsonl"), "w") as f:
+                f.write('{"incident":"misfire","createdAt":"2026-10-12T15:00:00Z"}\n')
+                f.write('{"timestamp":1.0,"firedAction":"pinch_dock","shadowPosture":"none"}\n')
+
+            res = ev.evaluate_shadow(records, incidents_path=tmpdir)
+            self.assertEqual(res["shadow_frames"], 3)
+            self.assertEqual(res["agreements"], 2)
+            self.assertEqual(res["disagreements"], 1)
+            self.assertAlmostEqual(res["disagreement_rate"], 1.0 / 3.0)
+            self.assertEqual(res["disagreement_matrix"]["pinch"]["none"], 1)
+            self.assertEqual(res["misfires_total"], 1)
+            self.assertEqual(res["shadow_sided_with_user"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

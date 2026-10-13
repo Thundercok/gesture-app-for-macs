@@ -631,6 +631,136 @@ def evaluate_incidents(incidents_path: str) -> Dict[str, Any]:
     }
 
 
+def evaluate_shadow(records: List[Dict[str, Any]], incidents_path: Optional[str] = None) -> Dict[str, Any]:
+    total_frames = len(records)
+    shadow_frames = 0
+    agreements = 0
+    disagreements = 0
+    disagreement_matrix: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    heuristic_counts: Dict[str, int] = defaultdict(int)
+    shadow_counts: Dict[str, int] = defaultdict(int)
+
+    for r in records:
+        shadow_posture = r.get("shadowPosture")
+        if shadow_posture is None:
+            continue
+        shadow_frames += 1
+
+        # Derive heuristic posture
+        if r.get("isPinching", False):
+            h_posture = "pinch"
+        elif r.get("isTwoFingers", False):
+            h_posture = "two_fingers"
+        elif r.get("fingerCount", 0) >= 4 or r.get("isRaisedHand", False) and r.get("fingerCount", 0) >= 3:
+            h_posture = "open_palm"
+        elif r.get("fingerCount", 0) == 0:
+            h_posture = "fist"
+        else:
+            h_posture = "none"
+
+        heuristic_counts[h_posture] += 1
+        shadow_counts[shadow_posture] += 1
+
+        if shadow_posture == h_posture:
+            agreements += 1
+        else:
+            disagreements += 1
+            disagreement_matrix[h_posture][shadow_posture] += 1
+
+    disagreement_rate = (disagreements / shadow_frames) if shadow_frames > 0 else 0.0
+
+    # Incident alignment
+    misfires_total = 0
+    shadow_sided_with_user = 0
+    if incidents_path and os.path.exists(incidents_path):
+        for fname in sorted(os.listdir(incidents_path)):
+            if not (fname.endswith(".jsonl") or fname.endswith(".json")):
+                continue
+            fpath = os.path.join(incidents_path, fname)
+            try:
+                header = None
+                frames = []
+                with open(fpath, "r", encoding="utf-8") as f:
+                    for lnum, line in enumerate(f, start=1):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        obj = json.loads(line)
+                        if lnum == 1 and "incident" in obj:
+                            header = obj
+                        elif "frames" in obj and isinstance(obj["frames"], list):
+                            header = {"incident": obj.get("type", "")}
+                            frames.extend(obj["frames"])
+                        else:
+                            frames.append(obj)
+
+                kind = str(header["incident"]).lower() if header and "incident" in header else ""
+                if not kind and "misfire" in fname.lower():
+                    kind = "misfire"
+
+                if kind == "misfire":
+                    misfires_total += 1
+                    disagreed_in_incident = any(
+                        fr.get("shadowPosture") == "none" and (fr.get("firedAction", "") != "" or fr.get("firedIntent", "") != "")
+                        for fr in frames
+                    )
+                    if disagreed_in_incident:
+                        shadow_sided_with_user += 1
+            except Exception:
+                continue
+
+    return {
+        "total_records": total_frames,
+        "shadow_frames": shadow_frames,
+        "agreements": agreements,
+        "disagreements": disagreements,
+        "disagreement_rate": disagreement_rate,
+        "heuristic_counts": dict(heuristic_counts),
+        "shadow_counts": dict(shadow_counts),
+        "disagreement_matrix": {k: dict(v) for k, v in disagreement_matrix.items()},
+        "misfires_total": misfires_total,
+        "shadow_sided_with_user": shadow_sided_with_user,
+    }
+
+
+def print_shadow_report(results: Dict[str, Any], title: str = "SHADOW POSTURE CLASSIFIER EVALUATION"):
+    print("\n" + "=" * 78)
+    print(f" {title.center(76)} ")
+    print("=" * 78)
+    total = results["shadow_frames"]
+    if total == 0:
+        print(" No frames with shadow posture metadata found.")
+        print(" (Run GestureFlow with PostureClassifier integrated or replay on shadow records)")
+        print("=" * 78 + "\n")
+        return
+
+    agree = results["agreements"]
+    disagree = results["disagreements"]
+    disagree_pct = results["disagreement_rate"] * 100.0
+    agree_pct = (agree / total) * 100.0
+
+    print(f" Total Shadow-Evaluated Frames: {total}")
+    print(f" Agreements with Heuristics:    {agree} ({agree_pct:.1f}%)")
+    print(f" Disagreements:                 {disagree} ({disagree_pct:.1f}%)")
+    print("-" * 78)
+
+    matrix = results["disagreement_matrix"]
+    if matrix:
+        print(" Disagreement Breakdown (Heuristic -> Shadow Model):")
+        for h_cls in sorted(matrix.keys()):
+            for s_cls, cnt in sorted(matrix[h_cls].items(), key=lambda x: -x[1]):
+                print(f"   - {h_cls:<14s} -> {s_cls:<14s}: {cnt:5d} frames")
+        print("-" * 78)
+
+    if results["misfires_total"] > 0:
+        m_tot = results["misfires_total"]
+        s_side = results["shadow_sided_with_user"]
+        s_pct = (s_side / m_tot) * 100.0
+        print(f" User Misfire Incidents Evaluated: {m_tot}")
+        print(f"   - Shadow Model sided with user:  {s_side} ({s_pct:.1f}%)")
+    print("=" * 78 + "\n")
+
+
 def print_incidents_report(results: Dict[str, Any], title: str = "PASSIVE FLIGHT RECORDER INCIDENT REPORT"):
     print("\n" + "=" * 78)
     print(f" {title.center(76)} ")
@@ -670,12 +800,13 @@ def main():
     parser.add_argument("--data", "-d", help="Path to recorded JSONL landmark dataset file or directory")
     parser.add_argument("--replayed", "-r", help="Path to replayed JSONL file produced by --replay (merges with ground truth from --data)")
     parser.add_argument("--incidents", "-i", help="Path to incident recording directory (evaluates misfire rate and flight recorder logs)")
+    parser.add_argument("--shadow", action="store_true", help="Evaluate shadow posture classifier disagreement rates and alignment with misfire incidents")
     parser.add_argument("--test", action="store_true", help="Run self-test using synthetic benchmark data")
     parser.add_argument("--output-json", "-o", help="Optional output JSON path for evaluation results")
 
     args = parser.parse_args()
 
-    if args.incidents:
+    if args.incidents and not args.shadow:
         results = evaluate_incidents(args.incidents)
         print_incidents_report(results, title=f"INCIDENT REPORT: {os.path.basename(os.path.expanduser(args.incidents))}")
         if args.output_json:
@@ -737,6 +868,17 @@ def main():
         print(f"Error: No valid JSONL records found.", file=sys.stderr)
         sys.exit(1)
 
+    source_name = os.path.basename(args.data or args.replayed or "replayed")
+
+    if args.shadow:
+        shadow_res = evaluate_shadow(records, incidents_path=args.incidents)
+        print_shadow_report(shadow_res, title=f"SHADOW POSTURE REPORT: {source_name}")
+        if args.output_json:
+            with open(args.output_json, "w", encoding="utf-8") as f:
+                json.dump(shadow_res, f, indent=2)
+            print(f"Saved JSON metrics to: {args.output_json}")
+        return
+
     results = evaluate_dataset(records)
     has_events = any("firedIntent" in r for r in records)
     if has_events:
@@ -744,7 +886,6 @@ def main():
     else:
         print("[Warning] Records have no 'firedIntent' (recorded with an older build). "
               "Frame-level state accuracy under-reports instantaneous gestures such as swipes; re-record for event-level metrics.")
-    source_name = os.path.basename(args.data or args.replayed or "replayed")
     print_ascii_report(results, title=f"FRAME-LEVEL STATE REPORT: {source_name}")
 
     if args.output_json:
