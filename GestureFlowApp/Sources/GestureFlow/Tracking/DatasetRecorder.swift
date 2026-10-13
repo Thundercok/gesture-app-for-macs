@@ -40,12 +40,15 @@ struct HandFrameRecord: Codable {
     let isInInteractionRange: Bool?
     let handCentroid: LandmarkPointRecord?
     let tiltAngleDegrees: Double?
+    let shadowPosture: String?
+    let shadowAgrees: Bool?
 
     enum CodingKeys: String, CodingKey {
         case timestamp, frameIndex, groundTruth, predictedIntent, firedIntent, firedAction
         case handDetected, fingerCount, isPinching, isTwoFingers, isRaisedHand
         case estimatedDepth, facingCamera, primaryPoints, secondaryPoints
         case confidence, confidences, faceBBox, isInInteractionRange, handCentroid, tiltAngleDegrees
+        case shadowPosture, shadowAgrees
     }
 
     init(
@@ -68,7 +71,9 @@ struct HandFrameRecord: Codable {
         faceBBox: FaceBBoxRecord? = nil,
         isInInteractionRange: Bool? = nil,
         handCentroid: LandmarkPointRecord? = nil,
-        tiltAngleDegrees: Double? = nil
+        tiltAngleDegrees: Double? = nil,
+        shadowPosture: String? = nil,
+        shadowAgrees: Bool? = nil
     ) {
         self.timestamp = timestamp
         self.frameIndex = frameIndex
@@ -90,6 +95,8 @@ struct HandFrameRecord: Codable {
         self.isInInteractionRange = isInInteractionRange
         self.handCentroid = handCentroid
         self.tiltAngleDegrees = tiltAngleDegrees
+        self.shadowPosture = shadowPosture
+        self.shadowAgrees = shadowAgrees
     }
 
     init(from decoder: Decoder) throws {
@@ -137,6 +144,8 @@ struct HandFrameRecord: Codable {
         }
 
         tiltAngleDegrees = try? container.decodeIfPresent(Double.self, forKey: .tiltAngleDegrees)
+        shadowPosture = try? container.decodeIfPresent(String.self, forKey: .shadowPosture)
+        shadowAgrees = try? container.decodeIfPresent(Bool.self, forKey: .shadowAgrees)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -161,6 +170,8 @@ struct HandFrameRecord: Codable {
         try container.encodeIfPresent(isInInteractionRange, forKey: .isInInteractionRange)
         try container.encodeIfPresent(handCentroid, forKey: .handCentroid)
         try container.encodeIfPresent(tiltAngleDegrees, forKey: .tiltAngleDegrees)
+        try container.encodeIfPresent(shadowPosture, forKey: .shadowPosture)
+        try container.encodeIfPresent(shadowAgrees, forKey: .shadowAgrees)
     }
 }
 
@@ -173,7 +184,9 @@ func makeFrameRecord(
     firedIntent: String = "",
     firedAction: String = "",
     groundTruth: String,
-    confidence: [Float]? = nil
+    confidence: [Float]? = nil,
+    shadowPosture: String? = nil,
+    shadowAgrees: Bool? = nil
 ) -> HandFrameRecord {
     let pPoints = primary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) } ?? []
     let sPoints = secondary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) }
@@ -204,7 +217,9 @@ func makeFrameRecord(
         faceBBox: faceRec,
         isInInteractionRange: primary?.isInInteractionRange,
         handCentroid: centroidRec,
-        tiltAngleDegrees: primary?.tiltAngleDegrees
+        tiltAngleDegrees: primary?.tiltAngleDegrees,
+        shadowPosture: shadowPosture,
+        shadowAgrees: shadowAgrees
     )
 }
 

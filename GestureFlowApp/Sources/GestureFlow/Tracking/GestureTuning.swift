@@ -24,6 +24,9 @@ struct GestureTuning: Codable, Equatable {
     // Scroll flicks
     var scrollFlickMinVelocity: Double     // Baseline: 0.42 (from ScrollEngine.swift)
 
+    // Learned Posture Shadow Mode (WP7)
+    var useLearnedPosture: Bool = false    // Default false, cannot be flipped without gate passing and user approval
+
     // MARK: - Presets
 
     /// Balanced: EXACTLY the baseline behaviour (regression-safe parity)
@@ -36,7 +39,8 @@ struct GestureTuning: Codable, Equatable {
         pinchCalmHandSpeed: 0.42,
         postPinchSwipeGuardSeconds: 0.35,
         swipeCooldownSeconds: 0.45,
-        scrollFlickMinVelocity: 0.42
+        scrollFlickMinVelocity: 0.42,
+        useLearnedPosture: false
     )
 
     /// Safe: stricter thresholds to minimize false triggers during typing / talking / resting
@@ -49,7 +53,8 @@ struct GestureTuning: Codable, Equatable {
         pinchCalmHandSpeed: 0.32,
         postPinchSwipeGuardSeconds: 0.50,
         swipeCooldownSeconds: 0.55,
-        scrollFlickMinVelocity: 0.55
+        scrollFlickMinVelocity: 0.55,
+        useLearnedPosture: false
     )
 
     /// Sensitive: lower thresholds for quick, effortless spatial triggers
@@ -62,7 +67,8 @@ struct GestureTuning: Codable, Equatable {
         pinchCalmHandSpeed: 0.50,
         postPinchSwipeGuardSeconds: 0.25,
         swipeCooldownSeconds: 0.38,
-        scrollFlickMinVelocity: 0.35
+        scrollFlickMinVelocity: 0.35,
+        useLearnedPosture: false
     )
 
     static func preset(for preset: TuningPreset) -> GestureTuning {
@@ -85,7 +91,8 @@ struct GestureTuning: Codable, Equatable {
             pinchCalmHandSpeed: a.pinchCalmHandSpeed + (b.pinchCalmHandSpeed - a.pinchCalmHandSpeed) * clamped,
             postPinchSwipeGuardSeconds: a.postPinchSwipeGuardSeconds + (b.postPinchSwipeGuardSeconds - a.postPinchSwipeGuardSeconds) * clamped,
             swipeCooldownSeconds: a.swipeCooldownSeconds + (b.swipeCooldownSeconds - a.swipeCooldownSeconds) * clamped,
-            scrollFlickMinVelocity: a.scrollFlickMinVelocity + (b.scrollFlickMinVelocity - a.scrollFlickMinVelocity) * clamped
+            scrollFlickMinVelocity: a.scrollFlickMinVelocity + (b.scrollFlickMinVelocity - a.scrollFlickMinVelocity) * clamped,
+            useLearnedPosture: false
         )
     }
 

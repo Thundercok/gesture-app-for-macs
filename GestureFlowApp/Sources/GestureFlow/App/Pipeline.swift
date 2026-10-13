@@ -194,6 +194,9 @@ extension AppDelegate {
                 IncidentRecorder.shared.markAutoFire(intent: fired)
             }
 
+            let heuristicPosture = PostureClassifier.deriveHeuristicPosture(from: landmarks)
+            let (shadowPosture, shadowAgrees) = PostureClassifier.shared.evaluateShadow(landmarks: landmarks, heuristicPosture: heuristicPosture)
+
             let frameRec = makeFrameRecord(
                 frameIndex: self.frameCount,
                 timestamp: pts.seconds,
@@ -202,7 +205,9 @@ extension AppDelegate {
                 predictedIntent: IntentArbiter.shared.currentIntent.rawValue,
                 firedIntent: fired,
                 firedAction: firedAction,
-                groundTruth: DatasetRecorder.shared.currentLabel
+                groundTruth: DatasetRecorder.shared.currentLabel,
+                shadowPosture: shadowPosture,
+                shadowAgrees: shadowAgrees
             )
 
             if DatasetRecorder.shared.isRecording {
