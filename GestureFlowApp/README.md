@@ -1,139 +1,113 @@
-# GestureFlow — Comprehensive Project & Architecture Handoff
+# GestureFlow — Spatial Hand-Gesture Controller for macOS
 
 > **Target Platform**: macOS 14.0+ (Sonoma, Sequoia)  
 > **Hardware Target**: Apple Silicon (M1/M2/M3/M4) with Apple Neural Engine (ANE)  
-> **Language & Frameworks**: Swift 5.9+, SwiftUI, Apple Vision (`Vision.framework`), AVFoundation, CoreGraphics, Accessibility (`AXUIElement`)  
-> **App Location**: `/Applications/GestureFlow.app`  
+> **Language & Frameworks**: Swift 5.9+, SwiftUI, Apple Vision (`Vision.framework`), AVFoundation, CoreGraphics, CoreML, Accessibility (`AXUIElement`)  
 > **Source Directory**: `GestureFlowApp/`
 
 ---
 
-## 1. Executive Summary
+## 1. Overview
 
-**GestureFlow** is a native, lightweight, ultra-low latency (60 FPS locked, <1% CPU) hand-gesture shortcut controller for macOS. It is designed specifically for **fluid system multitasking** without touching the mouse or keyboard:
-- **Pinch & Drag navigation** (Vision Pro inspired) for switching apps and controlling window states.
-- **Open-Hand Swiping** for switching macOS Desktop Spaces.
-- **Floating Glassmorphism HUD** overlaying neon skeletal tracking, live pinch reticles, and trigger toasts.
+**GestureFlow** is a native, low-latency (60 FPS active / 15 FPS idle auto-throttled) spatial hand-gesture controller for macOS. It combines Apple Vision 21-point hand pose estimation with deterministic kinematic arbitration (`IntentArbiter`), configurable sensitivity presets (`GestureTuning`), an offline deterministic replay harness (`--replay`), a passive flight-recorder (`IncidentRecorder`), and an optional Core ML posture classifier in shadow mode (`PostureClassifier`).
 
 ---
 
-## 2. Gesture Mapping Specification
-
-| Interaction Mode | Physical Gesture | System Shortcut / API | Action Triggered |
-| :--- | :--- | :--- | :--- |
-| **Pinch Horizontal** | 🤏 Chụm Ngón Cái + Trỏ rồi kéo sang **Phải** | `⌘ + Tab` | Chuyển sang Ứng dụng kế tiếp (**Next App**) |
-| **Pinch Horizontal** | 🤏 Chụm Ngón Cái + Trỏ rồi kéo sang **Trái** | `⌘ + ⇧ + Tab` | Chuyển về Ứng dụng trước đó (**Prev App**) |
-| **Pinch Vertical** | 🤏 Chụm Ngón Cái + Trỏ rồi kéo lên **Trên** | `AXFullScreen` / `⌃ + ⌘ + F` | Phóng to toàn màn hình (**Maximize / Fullscreen**) |
-| **Pinch Vertical** | 🤏 Chụm Ngón Cái + Trỏ rồi kéo xuống **Dưới** | `AXMinimized` / `⌘ + M` | Thu nhỏ cửa sổ hiện tại (**Minimize Window**) |
-| **Full Hand Swipe** | 🖐 Xòe 4–5 ngón tay vẩy dứt khoát sang **Phải** | `⌃ + →` (Key 124) | Chuyển sang Desktop Space bên **Phải** |
-| **Full Hand Swipe** | 🖐 Xòe 4–5 ngón tay vẩy dứt khoát sang **Trái** | `⌃ + ←` (Key 123) | Chuyển sang Desktop Space bên **Trái** |
-| **Full Hand Swipe** | 🖐 Xòe 4–5 ngón tay vẩy dứt khoát lên **Trên** | `⌃ + ↑` (Key 126) | Mở tổng quan các cửa sổ (**Mission Control**) |
-| **Full Hand Swipe** | 🖐 Xòe 4–5 ngón tay vẩy dứt khoát xuống **Dưới** | `⌃ + ↓` (Key 125) | Hiện cửa sổ ứng dụng hiện tại (**App Exposé**) |
-
----
-
-## 3. Architecture & Data Flow Pipeline
-
-```mermaid
-graph TD
-    Camera[AVCaptureSession 60 FPS] -->|CVPixelBuffer| Vision[Apple Vision VNDetectHumanHandPoseRequest]
-    Vision -->|21 3D Joint Landmarks| Tracker[HandTracker: Rotation-Invariant & 70% EMA Smoothing]
-    Tracker -->|HandLandmarks & Pinch State| Engine[GestureEngine: Intent Hysteresis State Machine]
-    Engine -->|Action Event| Dispatcher[ActionDispatcher: AXUIElement / CGEvent + Audio Feedback]
-    Engine -->|Live Reticle & Vectors| AppState[AppState Combine ObservableObject]
-    AppState -->|60 FPS Renders| HUD[HUDView: SwiftUI Floating Glass Panel]
-```
-
----
-
-## 4. Source Files Deep-Dive
-
-### 📂 `GestureFlowApp/Sources/GestureFlow/`
-
-#### 1. `Camera/CameraManager.swift`
-- Replaces Python/OpenCV camera capture with native `AVCaptureSession` and `AVCaptureVideoDataOutput`.
-- Dispatches hardware-accelerated frames on a dedicated high-priority queue (`qos: .userInteractive`).
-- Configures 640x480 resolution for optimal ANE throughput at locked 60 FPS with zero dropped frames.
-
-#### 2. `Tracking/HandTracker.swift`
-- Executes Apple Vision's `VNDetectHumanHandPoseRequest` on Apple Neural Engine.
-- **Rotation-Invariant Finger Extension**: Evaluates fingertip-to-wrist distance versus MCP/PIP knuckle distances ($\text{dist}(\text{Tip}, \text{Wrist}) > 1.05 \times \text{dist}(\text{PIP}, \text{Wrist})$) to detect finger state regardless of hand rotation.
-- **Pinch Center & Distance**: Measures Euclidean distance between thumb tip and index tip. Computes screen-mirrored center point.
-- **Low-Pass Filter (EMA Smoothing)**: Applies $\alpha = 0.70$ temporal filter across all 21 landmark nodes to eliminate webcam sensor micro-jitter.
-
-#### 3. `Tracking/GestureEngine.swift`
-- **Pinch & Drag State Machine**:
-  - Activates when $\text{pinchDistance} < 0.065$.
-  - Requires intentional displacement ($\Delta \ge 0.070$ frame width) before dispatching an action.
-  - Directional disambiguation: Compares $|dx|$ vs $|dy|$ with a $1.1\times$ dominant axis check.
-  - **Single-Fire Lock**: Dispatches exactly once per pinch gesture; prevents repeated spamming.
-- **Open-Hand Desktop Space Swipe**:
-  - Requires $\text{fingerCount} \ge 4$ and unpinched hand.
-  - Sliding velocity buffer ($0.04\text{s} \le \Delta t \le 0.28\text{s}$, displacement $\ge 0.10$, cooldown $450\text{ms}$).
-
-#### 4. `Tracking/ActionDispatcher.swift`
-- **Hybrid Dispatch Architecture**:
-  - **Direct Accessibility API (`AXUIElement`)**: Directly toggles `kAXMinimizedAttribute` and `AXFullScreen` on the frontmost application's focused window without keyboard buffer latency.
-  - **Native `CGEvent` CoreGraphics**: Posts keystrokes with modifiers to `.cghidEventTap` via `.combinedSessionState`.
-- **Audio Feedback**: Invokes `NSSound(named: "Tink")?.play()` on successful dispatch for instant tactile/auditory confirmation.
-
-#### 5. `UI/HUDView.swift`
-- Modern macOS Glassmorphism design using `.ultraThinMaterial`, dynamic stroke gradients, and drop shadows.
-- **Neon Skeleton View**: Renders hand bone connectivity lines and glowing fingertip nodes (gold for pinch tips, cyan for other fingertips).
-- **Pinch Reticle View**: Renders a pulsing circular target at the active pinch coordinates with a dynamic directional arrow showing drag intent.
-- **Dynamic Trigger Toast**: Displays gold glowing pill animations (`bolt.fill`) upon gesture execution.
-
-#### 6. `main.swift`
-- Configures a borderless, non-activating floating `NSPanel` (`.floating`, `.canJoinAllSpaces`, `.fullScreenAuxiliary`).
-- Runs periodic background checks on `AXIsProcessTrusted()` to toggle the accessibility warning banner seamlessly.
-
----
-
-## 5. Security, Codesigning & macOS TCC Secrets
-
-### The Problem:
-On macOS Sonoma/Sequoia, ad-hoc signed apps (`codesign -s -`) produce a new cryptographic `CDHash` every time the binary is recompiled. macOS TCC (Transparency, Consent, and Control) identifies ad-hoc apps by `CDHash` rather than bundle ID. This causes macOS to silently block Accessibility permissions on rebuilt binaries even if the toggle shows **ON** in System Settings.
-
-### The Solution:
-1. A permanent local code-signing certificate named **`GestureFlow Developer`** is installed in `~/Library/Keychains/login.keychain-db`.
-2. The `Makefile` signs the bundle with:
-   ```bash
-   codesign --force --deep --sign "GestureFlow Developer" --identifier com.user.GestureFlow GestureFlow.app
-   ```
-3. Because the identity is anchored to a trusted certificate subject, macOS TCC permissions persist across builds.
-
----
-
-## 6. Build, Install & Management Commands
+## 2. Build & Run
 
 ```bash
-# Navigate to project root
-cd /Users/thundercock2/Documents/antigravity/focused-davinci/GestureFlowApp
+# Build debug binary via Swift Package Manager
+cd GestureFlowApp
+swift build
 
-# Build release binary, package app, and sign with persistent certificate
-make build
+# Launch GestureFlow
+.build/arm64-apple-macosx/debug/GestureFlow
 
-# Install to /Applications/GestureFlow.app
-make install
+# Launch voice-guided 7-minute dataset recording session
+.build/arm64-apple-macosx/debug/GestureFlow --guided
 
-# Launch / Relaunch app
-make run
-
-# Stop app
-make stop
-
-# Clean build artifacts
-make clean
+# Run deterministic headless replay on a recorded JSONL file
+.build/arm64-apple-macosx/debug/GestureFlow --replay <input.jsonl> --tuning balanced --output /tmp/replayed.jsonl
 ```
 
 ---
 
-## 7. Extension & Future Feature Vectors
+## 3. Required macOS Permissions
 
-For incoming engineers or LLMs working on this codebase:
-1. **Window Snap & Tile (Aerospace / Rectangle integration)**:
-   - Add Pinch + Corner Drags (Top-Left, Top-Right) for 50% split screen tiling via `AXUIElementSetAttributeValue(window, kAXPositionAttribute, ...)`.
-2. **Multi-Hand Coordination**:
-   - `HandTracker.swift` currently sets `maximumHandCount = 1`. Can be expanded to 2 hands for two-handed zoom/rotate or dual-window orchestration.
-3. **Menu Bar Extra / Tray Toggle**:
-   - Convert `LSUIElement` to `true` in `Info.plist` and add `NSStatusItem` for background menu bar mode.
+GestureFlow requires three macOS TCC permissions under **System Settings → Privacy & Security**:
+
+| Permission | Purpose | Where to Enable |
+| :--- | :--- | :--- |
+| **Camera** | Captures live video frames into `Vision.framework` (`VNDetectHumanHandPoseRequest`) in memory | Privacy & Security → Camera |
+| **Accessibility** | Synthesizes Space switches (`⌃←` / `⌃→`), Mission Control (`⌃↑`), Show Desktop (`⌘F3`), smooth scrolling (`CGEvent`), and app activation (`AXUIElement`) | Privacy & Security → Accessibility |
+| **Input Monitoring** | Listens for global incident-marking hotkeys (`⌃⌥⌘M` / `⌃⌥⌘N`) and ground-truth dataset labeling keys (`0`–`8`) when the HUD is unfocused | Privacy & Security → Input Monitoring |
+
+---
+
+## 4. System Modes & Sensitivity Presets
+
+### System Modes
+Switch modes from the menu bar icon (`hand.raised.fill`), the HUD mode badge, or via shortcut keys:
+1. **Air Scroll (`⌘1`)**: Two-finger vertical flicks with iOS-style momentum decay (`0.942` per 16ms tick) and open-palm immediate brake.
+2. **Mac Navigation (`⌘2`)**:
+   - Open-palm horizontal swipes (`swipe_left` / `swipe_right`) to switch Desktop Spaces.
+   - Open-palm vertical swipes (`swipe_up` for Mission Control, `swipe_down` for Show Desktop).
+   - Open-palm scan → pinch-and-hold → horizontal scrub to open and select from the Spatial App Switcher Dock.
+3. **Spatial Zoom (`⌘3`)**: Bimanual (two-hand) pinch-and-spread proportional magnification (`⌘+` / `⌘-`).
+
+### Sensitivity Presets (`GestureTuning`)
+Selectable under the menu bar submenu **Độ nhạy cử chỉ (Sensitivity)** and persisted in `UserDefaults` (`gf.tuning.v1`):
+- **An toàn (`Safe`)**: Higher velocity (`0.65`), displacement (`0.085`), axis dominance (`1.50`), and open-palm dwell (`0.15s`) to minimize accidental triggers during typing or talking.
+- **Cân bằng (`Balanced` — Default)**: Baseline thresholds (`swipeMinVelocity = 0.50`, `swipeMinDisplacement = 0.065`, `openPalmDwellSeconds = 0.05`).
+- **Nhạy (`Sensitive`)**: Lighter thresholds (`swipeMinVelocity = 0.40`, `swipeMinDisplacement = 0.055`, `openPalmDwellSeconds = 0.03`) for effortless triggering.
+- **Hiệu chuẩn (`60s Calibration`)**: Interactive 60-second wizard measuring median palm size and 5 natural swipes, storing raw measurements alongside derived thresholds (65% of natural median motion).
+
+---
+
+## 5. Hotkeys Reference
+
+| Hotkey | Scope | Action |
+| :--- | :--- | :--- |
+| `⌃⌥⌘M` | Global & Local | **Mark Misfire Incident** (`IncidentRecorder.markUser(.misfire)`): dumps the last 4.0s of landmarks to disk. If **Hoàn tác khi đánh dấu bắn sai** is enabled in the menu bar and an auto-fire occurred within 3.0s, automatically performs the inverse action. |
+| `⌃⌥⌘N` | Global & Local | **Mark Missed Gesture Incident** (`IncidentRecorder.markUser(.missed)`): dumps the last 4.0s of landmarks when an intended gesture failed to fire. |
+| `⌘1` / `⌘2` / `⌘3` | Menu Bar | Switch between **Air Scroll**, **Mac Navigation**, and **Spatial Zoom** modes. |
+| `⌘D` / `⌘M` | Menu Bar | Show/Hide Debug HUD (`⌘D`) or Toggle Compact Pill / Expanded Viewport (`⌘M`). |
+| `⌘R` | Menu Bar | Start/Stop continuous JSONL dataset recording. |
+| `0`–`8` | While Recording (`⌘R`) | Set live ground-truth label (`0`: `idle`, `1`: `pinch_dock`, `2`: `swipe_left`, `3`: `swipe_right`, `4`: `swipe_up`, `5`: `swipe_down`, `6`: `scroll_down`, `7`: `scroll_up`, `8`: `zoom`). Locked during `--guided` sessions. |
+
+---
+
+## 6. Privacy Statement & Data Locations
+
+- **Zero Pixel Storage Guarantee**: GestureFlow **never** writes camera images, video frames, or raw pixel buffers (`CVPixelBuffer` / `NSImage`) to disk. Camera frames exist strictly in volatile RAM for the duration of the `VNDetectHumanHandPoseRequest` inference call (~2–4 ms).
+- **What Is Stored**: Incident logs and dataset recordings store **only** 21 normalized 2D hand landmark coordinates (`x, y` in `[0, 1]`), per-joint confidence scalars, anonymous normalized face bounding box coordinates (`x, y, w, h` for face-proximity suppression), and engine state strings.
+- **Local Storage Paths**:
+  - Passive Flight-Recorder Incidents (capped at 200 MB FIFO): `~/Library/Application Support/GestureFlow/incidents/`
+  - Guided & Manual Dataset Recordings: `~/Library/Application Support/GestureFlow/recordings/`
+  - Calibration Raw Measurements: `~/Library/Application Support/GestureFlow/calibration.json`
+- **Opt-Out**: Passive incident recording can be toggled off at any time from the menu bar (**Ghi sự cố thụ động (Flight Recorder)**).
+
+---
+
+## 7. Offline Evaluation, Replay & Posture Training
+
+```bash
+# 1. Run all Python unit tests (scorer, feature invariance, deterministic replay)
+python3 -m unittest discover -s tools -p "test_*.py" -v
+
+# 2. Evaluate recorded datasets (frame-level + directional event-level + p50/p95 latency)
+python3 tools/eval_gestures.py --data ~/Library/Application\ Support/GestureFlow/recordings
+
+# 3. Evaluate passive flight-recorder incidents (misfires, missed gestures, 95% Wilson CI)
+python3 tools/eval_gestures.py --incidents ~/Library/Application\ Support/GestureFlow/incidents
+
+# 4. Evaluate shadow-mode posture classifier agreement vs heuristic posture
+python3 tools/eval_gestures.py --data ~/Library/Application\ Support/GestureFlow/recordings --shadow
+
+# 5. Grid-search GestureTuning thresholds via deterministic replay (requires >= 20 real gesture windows)
+python3 tools/sweep.py --data ~/Library/Application\ Support/GestureFlow/recordings
+
+# 6. Export canonical 56D features (session-level split) and train Core ML PostureClassifier
+python3 tools/export_features.py --data ~/Library/Application\ Support/GestureFlow/recordings --out-dir /tmp/gf_features
+python3 tools/train_posture.py --features /tmp/gf_features/features.jsonl --split /tmp/gf_features/split.json
+```

@@ -168,5 +168,28 @@
 - Status: **SKIPPED**
 - Reason: `skipped: WP4 recommended Option 4 (Lightweight MLP on normalized 2D landmarks, already implemented in WP7) over heavy external dependencies (MediaPipe / Core ML conversion), and real shadow evaluation data is pending user recordings (NEEDS-USER).`
 
+## 2026-10-13: WP9 — UX and Robustness
 
+- Commits:
+  - `f79d134`: `feat(hud): show why a gesture was rejected`
+  - `a422ab9`: `feat(feedback): undo on misfire mark`
+  - `c20ce17`: `feat(calibration): onboarding wizard`
+  - `3c6fa23`: `docs(robustness): condition matrix`
+- Status: **DONE**
+- Deliverables:
+  - **WP9.1 (Why-not-recognised HUD Badge)**: Created `Tracking/RejectReason.swift` (`faceOverlap`, `edgeOnPalm`, `notStable`, `tooSlow`, `tooShort`, `axisAmbiguous`, `cooldown`, `arbiterBusy`, `pinchGuard`, `lowConfidence`), emitted reject reasons from `GestureEngine` when candidate hand speed $\ge 0.22$, auto-cleared after 1.0s in `AppState`, and displayed via dedicated `@ViewBuilder private var rejectReasonBadge` in `HUDView.swift`.
+  - **WP9.2 (Undo / Feedback Loop on Misfire Mark)**: Added `IntentArbiter.recentCommittedAction(within: 3.0)` and `ActionDispatcher.performUndo(forAction:)` (supporting inverse Space switches, Escape to exit Mission Control, and Show Desktop toggle). Wired behind menu bar toggle `"Hoàn tác khi đánh dấu bắn sai"` (default `false`) for `⌃⌥⌘M` and menu item triggers.
+  - **WP9.3 (Calibration Onboarding Wizard)**: Created `Tracking/CalibrationWizard.swift` implementing a 60-second voice-guided wizard (10s open-palm size measurement + 5 × 10s natural horizontal swipe trials). Persists raw `CalibrationMeasurements` to `UserDefaults` (`gf.calibration.raw.v1`) and `~/Library/Application Support/GestureFlow/calibration.json`, and derives `GestureTuning` velocity/displacement thresholds at 65% of natural median motion. Wired to menu item `"Hiệu chuẩn (60s Calibration)..."`. (`NEEDS-USER` to run with live hands).
+  - **WP9.4 (Robustness Matrix Doc)**: Created `docs/gesture/ROBUSTNESS.md` with 12 physical test conditions (lighting, FPS, handedness, distance, glasses, background clutter), exact recording/replay/evaluation commands, and all result cells marked `not measured` (`NEEDS-USER`) per Rule R3.
+  - **WP9.5 (Replay Frame-to-Action Latency)**: Added `latencyMs` calculation (frame timestamp minus ground-truth window onset) and p50/p95 summary reporting to both `ReplayRunner.swift` and `tools/eval_gestures.py`.
+- Verification:
+  - `swift build`: clean (0 errors, 0 warnings).
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v`: 29/29 tests passing.
 
+## 2026-10-13: WP10 — Release Hygiene
+
+- Status: **DONE**
+- Deliverables:
+  - Updated `GestureFlowApp/README.md` with build/run instructions, macOS TCC permissions table (Camera, Accessibility, Input Monitoring), system modes, sensitivity presets, hotkeys reference table, strict zero-pixel privacy statement, data locations, and offline evaluation/replay/training commands.
+  - Created `docs/gesture/CHANGELOG.md` summarizing WP0–WP10 with commit SHAs.
+  - Executed final clean build from scratch (`rm -rf GestureFlowApp/.build && swift build`), verified 29/29 Python unit tests, and confirmed byte-for-byte golden replay parity.
