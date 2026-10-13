@@ -116,6 +116,43 @@ enum ActionDispatcher {
         }
     }
 
+    /// Synthesize Escape key (keyCode 53) to exit Mission Control or modal overlays
+    static func pressEscape() {
+        let keyCode: CGKeyCode = 53
+        let src = CGEventSource(stateID: .hidSystemState)
+        if let down = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: true),
+           let up = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: false) {
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Perform the inverse action for a recently auto-fired action (WP9.2).
+    /// Returns a human-readable Vietnamese description of the inverse action performed, or nil if no inverse exists.
+    @discardableResult
+    static func performUndo(forAction action: String) -> String? {
+        switch action {
+        case "swipe_left":
+            // swipe_left switched Space to the right; inverse is switching Space to the left
+            switchSpace(.left)
+            return "Đã hoàn tác: Space Trái ←"
+        case "swipe_right":
+            // swipe_right switched Space to the left; inverse is switching Space to the right
+            switchSpace(.right)
+            return "Đã hoàn tác: Space Phải →"
+        case "swipe_up":
+            // swipe_up opened Mission Control; inverse is pressing Escape
+            pressEscape()
+            return "Đã hoàn tác: Thoát Mission Control"
+        case "swipe_down":
+            // swipe_down toggled Show Desktop; inverse is toggling Show Desktop again
+            showDesktop()
+            return "Đã hoàn tác: Hiện lại cửa sổ"
+        default:
+            return nil
+        }
+    }
+
     // MARK: - Air Scroll & Momentum Engine
 
     /// Query macOS "natural scrolling" preference from com.apple.AppleMultitouchTrackpad / GlobalPreferences

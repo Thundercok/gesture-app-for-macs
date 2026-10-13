@@ -96,6 +96,19 @@ final class IntentArbiter {
         return lastCommittedActionStorage
     }
 
+    /// Returns the most recently committed action name if it occurred within `windowSeconds` of `now`.
+    func recentCommittedAction(within windowSeconds: TimeInterval = 3.0, now: TimeInterval? = nil) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        let currentTime = now ?? clock.now.timeIntervalSinceReferenceDate
+        guard lastActionTimestamp > 0,
+              (currentTime - lastActionTimestamp) <= windowSeconds,
+              !lastCommittedActionStorage.isEmpty else {
+            return nil
+        }
+        return lastCommittedActionStorage
+    }
+
     func forceReset() {
         lock.lock()
         defer { lock.unlock() }

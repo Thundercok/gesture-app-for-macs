@@ -40,6 +40,12 @@ extension AppDelegate {
         passiveItem.toolTip = "Chỉ lưu toạ độ landmark và trạng thái engine khi xảy ra sự cố, tuyệt đối không lưu hình ảnh camera."
         menu.addItem(passiveItem)
 
+        let undoMisfireItem = NSMenuItem(title: "Hoàn tác khi đánh dấu bắn sai", action: #selector(toggleUndoOnMisfire), keyEquivalent: "")
+        undoMisfireItem.target = self
+        undoMisfireItem.state = appState.undoOnMisfire ? .on : .off
+        undoMisfireItem.toolTip = "Khi bấm ⌃⌥⌘M trong vòng 3 giây sau khi cử chỉ tự kích hoạt, tự động thực hiện hành động ngược lại."
+        menu.addItem(undoMisfireItem)
+
         let sensitivityMenu = NSMenu()
         let safeItem = NSMenuItem(title: "An toàn (Safe - Ít bắn nhầm nhất)", action: #selector(setTuningSafe), keyEquivalent: "")
         safeItem.target = self
@@ -129,7 +135,13 @@ extension AppDelegate {
 
     @objc func markMisfireIncident() {
         IncidentRecorder.shared.markUser(.misfire)
-        appState.setAction("Đã đánh dấu bắn sai")
+        if appState.undoOnMisfire,
+           let recentAction = IntentArbiter.shared.recentCommittedAction(within: 3.0),
+           let undoDesc = ActionDispatcher.performUndo(forAction: recentAction) {
+            appState.setAction(undoDesc)
+        } else {
+            appState.setAction("Đã đánh dấu bắn sai")
+        }
         NSSound(named: "Basso")?.play()
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
     }
@@ -145,6 +157,13 @@ extension AppDelegate {
         sender.state = IncidentRecorder.shared.isEnabled ? .on : .off
         let status = IncidentRecorder.shared.isEnabled ? "BẬT" : "TẮT"
         appState.setAction("Ghi sự cố thụ động: \(status)")
+    }
+
+    @objc func toggleUndoOnMisfire(_ sender: NSMenuItem) {
+        appState.undoOnMisfire.toggle()
+        sender.state = appState.undoOnMisfire ? .on : .off
+        let status = appState.undoOnMisfire ? "BẬT" : "TẮT"
+        appState.setAction("Hoàn tác khi bắn sai: \(status)")
     }
 
     @objc func setTuningSafe(_ sender: NSMenuItem) {

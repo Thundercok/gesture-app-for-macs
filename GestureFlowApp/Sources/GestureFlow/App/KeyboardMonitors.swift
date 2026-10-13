@@ -11,18 +11,13 @@ extension AppDelegate {
             let hasModifiers = flags.contains([.control, .option, .command])
             if hasModifiers, let chars = event.charactersIgnoringModifiers?.lowercased() {
                 if chars == "m" {
-                    IncidentRecorder.shared.markUser(.misfire)
                     DispatchQueue.main.async {
-                        self.appState.setAction("Đã đánh dấu bắn sai")
-                        NSSound(named: "Basso")?.play()
-                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                        self.markMisfireIncident()
                     }
                     return
                 } else if chars == "n" {
-                    IncidentRecorder.shared.markUser(.missed)
                     DispatchQueue.main.async {
-                        self.appState.setAction("Đã đánh dấu bỏ lỡ cử chỉ")
-                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                        self.markMissedIncident()
                     }
                     return
                 }
@@ -49,18 +44,13 @@ extension AppDelegate {
             let hasModifiers = flags.contains([.control, .option, .command])
             if hasModifiers, let chars = event.charactersIgnoringModifiers?.lowercased() {
                 if chars == "m" {
-                    IncidentRecorder.shared.markUser(.misfire)
                     DispatchQueue.main.async {
-                        self.appState.setAction("Đã đánh dấu bắn sai")
-                        NSSound(named: "Basso")?.play()
-                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                        self.markMisfireIncident()
                     }
                     return nil
                 } else if chars == "n" {
-                    IncidentRecorder.shared.markUser(.missed)
                     DispatchQueue.main.async {
-                        self.appState.setAction("Đã đánh dấu bỏ lỡ cử chỉ")
-                        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+                        self.markMissedIncident()
                     }
                     return nil
                 }
