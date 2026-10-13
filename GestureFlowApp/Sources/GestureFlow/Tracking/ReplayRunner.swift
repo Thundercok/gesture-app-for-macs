@@ -100,8 +100,10 @@ final class ReplayRunner {
         var lastCommitSeq = 0
         var totalFrames = 0
         var firedActionCounts: [String: Int] = [:]
-        var firedActionsList: [(action: String, frame: Int, time: Double)] = []
+        var firedActionsList: [(action: String, frame: Int, time: Double, latencyMs: Double?)] = []
         var isDegradedReplay = false
+        var currentWindowLabel: String = "idle"
+        var currentWindowStartTime: Double? = nil
 
         let decoder = JSONDecoder()
         let encoder = JSONEncoder()
@@ -126,6 +128,16 @@ final class ReplayRunner {
 
             if record.confidence == nil && record.faceBBox == nil {
                 isDegradedReplay = true
+            }
+
+            let gt = record.groundTruth.lowercased()
+            if gt != currentWindowLabel {
+                currentWindowLabel = gt
+                if gt != "idle" && gt != "ignore" && gt != "transition" && gt != "0" && gt != "none" {
+                    currentWindowStartTime = record.timestamp
+                } else if gt == "idle" || gt == "0" || gt == "none" {
+                    currentWindowStartTime = nil
+                }
             }
 
             // Advance clock to this frame's timestamp
@@ -182,7 +194,11 @@ final class ReplayRunner {
             if seq != lastCommitSeq {
                 lastCommitSeq = seq
                 firedActionCounts[replayedFiredAction, default: 0] += 1
-                firedActionsList.append((action: replayedFiredAction, frame: record.frameIndex, time: record.timestamp))
+                var latencyMs: Double? = nil
+                if let winStart = currentWindowStartTime, record.timestamp >= winStart {
+                    latencyMs = (record.timestamp - winStart) * 1000.0
+                }
+                firedActionsList.append((action: replayedFiredAction, frame: record.frameIndex, time: record.timestamp, latencyMs: latencyMs))
             }
 
             totalFrames += 1
@@ -232,7 +248,17 @@ final class ReplayRunner {
         if !firedActionsList.isEmpty {
             print("Action Sequence:")
             for item in firedActionsList {
-                print(String(format: "  Frame %5d (t=%7.3fs): %@", item.frame, item.time, item.action))
+                if let lat = item.latencyMs {
+                    print(String(format: "  Frame %5d (t=%7.3fs, latencyMs=%5.0fms): %@", item.frame, item.time, lat, item.action))
+                } else {
+                    print(String(format: "  Frame %5d (t=%7.3fs): %@", item.frame, item.time, item.action))
+                }
+            }
+            let latencies = firedActionsList.compactMap { $0.latencyMs }.sorted()
+            if !latencies.isEmpty {
+                let p50Idx = Int(0.50 * Double(latencies.count - 1))
+                let p95Idx = Int(0.95 * Double(latencies.count - 1))
+                print(String(format: "Frame-to-action latency (timestamp): p50 = %.0fms, p95 = %.0fms (n=%d)", latencies[p50Idx], latencies[p95Idx], latencies.count))
             }
         }
         print("==================================")

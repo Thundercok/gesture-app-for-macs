@@ -429,6 +429,20 @@ def evaluate_events(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_false = sum(false_triggers.values())
     far_per_min = (total_false / (idle_time / 60.0)) if idle_time > 0 else 0.0
 
+    all_latencies_ms = sorted(
+        lat * 1000.0
+        for pc in per_class.values()
+        for lat in pc["latencies"]
+    )
+    if all_latencies_ms:
+        p50_idx = int(0.50 * (len(all_latencies_ms) - 1))
+        p95_idx = int(0.95 * (len(all_latencies_ms) - 1))
+        latency_p50_ms: Optional[float] = all_latencies_ms[p50_idx]
+        latency_p95_ms: Optional[float] = all_latencies_ms[p95_idx]
+    else:
+        latency_p50_ms = None
+        latency_p95_ms = None
+
     return {
         "per_class": per_class,
         "confusion": {k: dict(v) for k, v in confusion.items()},
@@ -437,6 +451,8 @@ def evaluate_events(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "idle_false_triggers": dict(false_triggers),
         "idle_false_triggers_per_min": far_per_min,
         "total_events": len(events),
+        "latency_p50_ms": latency_p50_ms,
+        "latency_p95_ms": latency_p95_ms,
     }
 
 
@@ -491,6 +507,8 @@ def print_event_report(res: Dict[str, Any]) -> None:
     print(f"\nIdle time scored: {res['idle_seconds']:.0f}s")
     print(f"False triggers while idle: {sum(res['idle_false_triggers'].values())} "
           f"({res['idle_false_triggers_per_min']:.2f}/min)  by class: {res['idle_false_triggers']}")
+    if res.get("latency_p50_ms") is not None:
+        print(f"Frame-to-action latency (timestamp): p50 = {res['latency_p50_ms']:.0f}ms, p95 = {res['latency_p95_ms']:.0f}ms")
     print("=" * 78 + "\n")
 
 
