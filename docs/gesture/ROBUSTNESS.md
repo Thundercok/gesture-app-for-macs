@@ -14,11 +14,13 @@ cd /Users/thundercock2/Documents/Github/Project-G1/GestureFlowApp
 # 2. Replay deterministically through the engine (optional if evaluating raw recording directly, required after tuning changes)
 .build/arm64-apple-macosx/debug/GestureFlow \
   --replay ~/Library/Application\ Support/GestureFlow/recordings/robustness_<cond_id>.jsonl \
-  --output /tmp/replay_<cond_id>.jsonl
+  --out /tmp/replay_<cond_id>.jsonl
 
 # 3. Evaluate event-level recall, direction confusion, false triggers/min, and frame-to-action latency (p50/p95)
 cd /Users/thundercock2/Documents/Github/Project-G1
-python3 tools/eval_gestures.py --file /tmp/replay_<cond_id>.jsonl
+python3 tools/eval_gestures.py \
+  --data ~/Library/Application\ Support/GestureFlow/recordings/robustness_<cond_id>.jsonl \
+  --replayed /tmp/replay_<cond_id>.jsonl
 ```
 
 ---
@@ -42,10 +44,6 @@ python3 tools/eval_gestures.py --file /tmp/replay_<cond_id>.jsonl
 
 ---
 
-## 3. Existing Pre-Plan Uncontrolled Recordings (Reference Only)
+## 3. Data Currently in the Repository
 
-For transparency, the repository contains 3 short ad-hoc recordings captured before the voice-guided protocol (`GestureFlowApp/recordings_phase1/*.jsonl`). As documented in `docs/gesture/PROGRESS.md` (WP0), these are short (~12–16s) single-gesture snippets without the `--guided` idle/transition schedule and must **not** be used to populate the controlled robustness matrix above:
-
-```bash
-python3 tools/eval_gestures.py --data GestureFlowApp/recordings_phase1
-```
+The repository contains **no real hand recordings**. The only JSONL files are synthetic test fixtures (`tools/fixtures/*.jsonl`) and their golden replay outputs (`tools/golden/*.golden.jsonl`). They test code paths only and must **never** be used to fill the matrix above.

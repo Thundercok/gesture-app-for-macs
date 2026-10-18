@@ -27,7 +27,7 @@ swift build
 .build/arm64-apple-macosx/debug/GestureFlow --guided
 
 # Run deterministic headless replay on a recorded JSONL file
-.build/arm64-apple-macosx/debug/GestureFlow --replay <input.jsonl> --tuning balanced --output /tmp/replayed.jsonl
+.build/arm64-apple-macosx/debug/GestureFlow --replay <input.jsonl> --tuning balanced --out /tmp/replayed.jsonl
 ```
 
 ---
@@ -79,7 +79,7 @@ Selectable under the menu bar submenu **Độ nhạy cử chỉ (Sensitivity)** 
 
 ## 6. Privacy Statement & Data Locations
 
-- **Zero Pixel Storage Guarantee**: GestureFlow **never** writes camera images, video frames, or raw pixel buffers (`CVPixelBuffer` / `NSImage`) to disk. Camera frames exist strictly in volatile RAM for the duration of the `VNDetectHumanHandPoseRequest` inference call (~2–4 ms).
+- **Zero Pixel Storage Guarantee**: GestureFlow **never** writes camera images, video frames, or raw pixel buffers (`CVPixelBuffer` / `NSImage`) to disk. Camera frames exist only in memory while the `VNDetectHumanHandPoseRequest` inference call runs.
 - **What Is Stored**: Incident logs and dataset recordings store **only** 21 normalized 2D hand landmark coordinates (`x, y` in `[0, 1]`), per-joint confidence scalars, anonymous normalized face bounding box coordinates (`x, y, w, h` for face-proximity suppression), and engine state strings.
 - **Local Storage Paths**:
   - Passive Flight-Recorder Incidents (capped at 200 MB FIFO): `~/Library/Application Support/GestureFlow/incidents/`
@@ -104,10 +104,10 @@ python3 tools/eval_gestures.py --incidents ~/Library/Application\ Support/Gestur
 # 4. Evaluate shadow-mode posture classifier agreement vs heuristic posture
 python3 tools/eval_gestures.py --data ~/Library/Application\ Support/GestureFlow/recordings --shadow
 
-# 5. Grid-search GestureTuning thresholds via deterministic replay (requires >= 20 real gesture windows)
-python3 tools/sweep.py --data ~/Library/Application\ Support/GestureFlow/recordings
+# 5. Grid-search GestureTuning thresholds via deterministic replay (one JSONL file; requires >= 20 real gesture windows)
+python3 tools/sweep.py --data ~/Library/Application\ Support/GestureFlow/recordings/<session>.jsonl --output-csv /tmp/sweep.csv
 
 # 6. Export canonical 56D features (session-level split) and train Core ML PostureClassifier
-python3 tools/export_features.py --data ~/Library/Application\ Support/GestureFlow/recordings --out-dir /tmp/gf_features
-python3 tools/train_posture.py --features /tmp/gf_features/features.jsonl --split /tmp/gf_features/split.json
+python3 tools/export_features.py --data ~/Library/Application\ Support/GestureFlow/recordings --output /tmp/gf_features/features.csv --split /tmp/gf_features/split.json
+python3 tools/train_posture.py --features /tmp/gf_features/features.csv --split /tmp/gf_features/split.json
 ```
