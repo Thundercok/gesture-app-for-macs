@@ -277,4 +277,23 @@
 - Live behaviour change: Calibration thresholds now accurately reflect engine-equivalent kinematics without per-frame noise amplification, and calibrated settings can be reverted via the menu bar.
 - NEEDS-USER: Live microphone / camera calibration wizard run remains NEEDS-USER.
 
+## 2026-10-19: WP17 — Swift↔Python feature parity
+- Status: DONE
+- Commits: `f2f1321` test(posture): swift/python feature parity check
+- What changed:
+  - Added headless `--dump-features <in.jsonl> --out <out.csv> [--raw]` CLI command in `main.swift` via `FeatureDumper.swift`.
+  - Added `PostureClassifier.extractFeatures(fromPoints:)` to enable direct evaluation on point arrays alongside `HandLandmarks`.
+  - Added `tools/test_feature_parity.py` executing automated per-frame comparison against `tools/export_features.py` on all test fixtures.
+  - Audited landmark representation: confirmed that `HandLandmarks.points` contains filtered/smoothed points from `SkeletonFilter` and `KinematicHandLimiter`, whereas `tools/export_features.py` trains on raw detection points.
+  - Created `docs/gesture/FINDINGS.md` documenting Finding F1 (Filtered vs. Raw input domain divergence) with 3 resolution options.
+  - Verified 56-D canonical normalization math parity: maximum difference is $1.00 \times 10^{-6}$ (well within $1 \times 10^{-4}$ tolerance).
+- Verification (verbatim):
+  - `python3 -m unittest tools/test_feature_parity.py` → `Ran 1 test in 6.120s OK (max diff = 1.00e-06)`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 30 tests in 0.252s OK`
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.013 (0.020) seconds`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: none.
+- NEEDS-USER: User alignment on Finding F1 (train on filtered points vs. infer on raw points).
+
+
 
