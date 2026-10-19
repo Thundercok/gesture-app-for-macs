@@ -403,7 +403,21 @@
   - `python3 -m unittest -v tools/test_report.py` → `Ran 2 tests in 1.112s OK`
   - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 32 tests in 8.776s OK`
 - Live behaviour change: Users can evaluate all recorded data with one command once real sessions are captured.
+## 2026-10-19: WP25 — Architecture and data-schema docs
+- Status: DONE
+- Commits: `3d3ea50` docs: architecture and data schema
+- What changed:
+  - Authored `docs/gesture/ARCHITECTURE.md` including a complete Mermaid dataflow diagram (Camera → HandTracker → Extractor → Mode Router → Arbiter → ActionSink → ActionDispatcher; plus IncidentRecorder, DatasetRecorder, PostureClassifier shadow, ReplayRunner), threading model reference linking `THREADING.md`, and complete verified module directory with one line per file.
+  - Authored `docs/gesture/DATA_SCHEMA.md` specifying all 22 fields of `HandFrameRecord` with Swift types, optionality, introduction work package, joint hierarchy map, and verbatim fixture JSON example line.
+  - Audited `GestureFlowApp/HANDOFF.md` and marked outdated sections (historical workspace paths, pre-WP1 single-engine pipeline diagram, partial file list, and disabled clap switching) with explicit warning banners while preserving original content.
+- Verification (verbatim):
+  - `find GestureFlowApp/Sources/GestureFlow -type f -name "*.swift"` → 35 files verified to exist
+  - `find GestureFlowApp/Tests -type f -name "*.swift"` → 4 files verified to exist
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.014 (0.017) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 32 tests in 5.286s OK`
+- Live behaviour change: none (documentation only).
 - NEEDS-USER: none
+
 
 
 
