@@ -1,0 +1,29 @@
+{
+  "synthetic_swipe_left.jsonl": [
+    "swipe_left"
+  ],
+  "synthetic_pinch.jsonl": [
+    "pinch_dock"
+  ],
+  "synthetic_swipe_right.jsonl": [
+    "swipe_right"
+  ],
+  "synthetic_swipe_up.jsonl": [
+    "swipe_up"
+  ],
+  "synthetic_swipe_down.jsonl": [
+    "swipe_down"
+  ],
+  "synthetic_idle_jitter.jsonl": [],
+  "synthetic_slow_swipe.jsonl": [],
+  "synthetic_diagonal.jsonl": [],
+  "synthetic_pinch_then_swipe.jsonl": [],
+  "synthetic_hand_lost_mid_swipe.jsonl": [],
+  "synthetic_face_proximity.jsonl": [],
+  "synthetic_scroll_down.jsonl": [
+    "scroll_down"
+  ],
+  "synthetic_scroll_up.jsonl": [
+    "scroll_up"
+  ]
+}

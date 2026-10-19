@@ -63,48 +63,50 @@ class TestReplayHarness(unittest.TestCase):
 
         return out_path, records, result.stdout
 
-    def test_synthetic_swipe_left_fires_exact_action(self):
-        out_path, records, stdout = self._run_replay("synthetic_swipe_left.jsonl", tuning="balanced")
-        try:
-            fired_actions = [r["firedAction"] for r in records if r.get("firedAction")]
-            self.assertEqual(fired_actions, ["swipe_left"], f"Expected ['swipe_left'], got {fired_actions}")
-            self.assertIn("swipe_left: 1", stdout)
+    def test_all_fixtures_fire_expected_actions_and_match_goldens(self):
+        expected_path = os.path.join(FIXTURES_DIR, "EXPECTED.json")
+        self.assertTrue(os.path.isfile(expected_path), f"EXPECTED.json not found at {expected_path}")
+        with open(expected_path, "r", encoding="utf-8") as f:
+            expected_map = json.load(f)
 
-            # Check byte-for-byte parity with golden
-            golden_path = os.path.join(GOLDEN_DIR, "synthetic_swipe_left.golden.jsonl")
-            self.assertTrue(os.path.isfile(golden_path), f"Golden file not found: {golden_path}")
-            with open(out_path, "rb") as f_out, open(golden_path, "rb") as f_gold:
-                self.assertEqual(f_out.read(), f_gold.read(), "Replay output does not match golden byte-for-byte")
-        finally:
-            if os.path.exists(out_path):
-                os.remove(out_path)
+        for fixture_name, expected_actions in expected_map.items():
+            with self.subTest(fixture=fixture_name):
+                out_path, records, stdout = self._run_replay(fixture_name, tuning="balanced")
+                try:
+                    fired_actions = [r["firedAction"] for r in records if r.get("firedAction")]
+                    self.assertEqual(
+                        fired_actions, expected_actions,
+                        f"Fixture {fixture_name}: expected {expected_actions}, got {fired_actions}"
+                    )
 
-    def test_synthetic_pinch_fires_exact_action(self):
-        out_path, records, stdout = self._run_replay("synthetic_pinch.jsonl", tuning="balanced")
-        try:
-            fired_actions = [r["firedAction"] for r in records if r.get("firedAction")]
-            self.assertEqual(fired_actions, ["pinch_dock"], f"Expected ['pinch_dock'], got {fired_actions}")
-            self.assertIn("pinch_dock: 1", stdout)
-
-            # Check byte-for-byte parity with golden
-            golden_path = os.path.join(GOLDEN_DIR, "synthetic_pinch.golden.jsonl")
-            self.assertTrue(os.path.isfile(golden_path), f"Golden file not found: {golden_path}")
-            with open(out_path, "rb") as f_out, open(golden_path, "rb") as f_gold:
-                self.assertEqual(f_out.read(), f_gold.read(), "Replay output does not match golden byte-for-byte")
-        finally:
-            if os.path.exists(out_path):
-                os.remove(out_path)
+                    base = os.path.splitext(fixture_name)[0]
+                    golden_path = os.path.join(GOLDEN_DIR, f"{base}.golden.jsonl")
+                    self.assertTrue(os.path.isfile(golden_path), f"Golden file not found: {golden_path}")
+                    with open(out_path, "rb") as f_out, open(golden_path, "rb") as f_gold:
+                        self.assertEqual(
+                            f_out.read(), f_gold.read(),
+                            f"Fixture {fixture_name}: Replay output does not match golden byte-for-byte"
+                        )
+                finally:
+                    if os.path.exists(out_path):
+                        os.remove(out_path)
 
     def test_determinism_across_multiple_runs(self):
-        out1, _, _ = self._run_replay("synthetic_swipe_left.jsonl", tuning="balanced")
-        out2, _, _ = self._run_replay("synthetic_swipe_left.jsonl", tuning="balanced")
-        try:
-            with open(out1, "rb") as f1, open(out2, "rb") as f2:
-                self.assertEqual(f1.read(), f2.read(), "Repeated replays must produce identical bytes")
-        finally:
-            for p in (out1, out2):
-                if os.path.exists(p):
-                    os.remove(p)
+        expected_path = os.path.join(FIXTURES_DIR, "EXPECTED.json")
+        with open(expected_path, "r", encoding="utf-8") as f:
+            fixtures = list(json.load(f).keys())
+
+        for fixture_name in fixtures:
+            with self.subTest(fixture=fixture_name):
+                out1, _, _ = self._run_replay(fixture_name, tuning="balanced")
+                out2, _, _ = self._run_replay(fixture_name, tuning="balanced")
+                try:
+                    with open(out1, "rb") as f1, open(out2, "rb") as f2:
+                        self.assertEqual(f1.read(), f2.read(), f"Repeated replays of {fixture_name} must produce identical bytes")
+                finally:
+                    for p in (out1, out2):
+                        if os.path.exists(p):
+                            os.remove(p)
 
     def test_sweep_guard_on_small_dataset(self):
         sweep_script = os.path.join(

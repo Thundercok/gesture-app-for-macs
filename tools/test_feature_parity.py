@@ -62,10 +62,14 @@ class TestFeatureParity(unittest.TestCase):
                 swift_rows = list(reader)
 
             with open(fixture_path, "r", encoding="utf-8") as f:
-                py_frames = [
-                    json.loads(line) for line in f
-                    if line.strip() and not line.strip().startswith('{"incident":')
-                ]
+                py_frames = []
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('{"incident":'):
+                        continue
+                    rec = json.loads(line)
+                    if rec.get("handDetected") and len(rec.get("primaryPoints", [])) == 21:
+                        py_frames.append(rec)
 
             self.assertEqual(
                 len(swift_rows), len(py_frames),
