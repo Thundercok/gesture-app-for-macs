@@ -2,11 +2,6 @@ import AppKit
 
 extension AppDelegate {
     func setupPipeline() {
-        tracker.onClapDetected = { [weak self] in
-            // Disabled: Clap detector was causing accidental mode switches whenever hands entered/left the camera frame.
-            // Modes must be chosen explicitly via Cmd+1/Cmd+2/Cmd+3 or the Menu Bar.
-            _ = self
-        }
         scrollEngine.onAction = { [weak self] actionTitle in
             self?.appState.setAction(actionTitle)
         }

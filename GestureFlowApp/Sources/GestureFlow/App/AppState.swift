@@ -95,6 +95,7 @@ final class CurrentModeBox: @unchecked Sendable {
 }
 
 final class AppState: ObservableObject {
+    static let undoOnMisfireKey = "gf.undoOnMisfire.v1"
     let currentModeBox = CurrentModeBox()
 
     @Published var currentFrame: NSImage?
@@ -200,7 +201,11 @@ final class AppState: ObservableObject {
     private var rejectReasonTimer: AnyCancellable?
 
     // Undo on Misfire Feedback Loop (WP9.2, default false)
-    @Published var undoOnMisfire: Bool = false
+    @Published var undoOnMisfire: Bool = UserDefaults.standard.bool(forKey: AppState.undoOnMisfireKey) {
+        didSet {
+            UserDefaults.standard.set(undoOnMisfire, forKey: AppState.undoOnMisfireKey)
+        }
+    }
 
     private var actionTimer: AnyCancellable?
 
