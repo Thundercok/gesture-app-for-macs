@@ -207,3 +207,16 @@
 - Live behaviour change: none
 - NEEDS-USER: none
 
+## 2026-10-19: WP12 — Fix B1: IntentArbiter clock domain
+- Status: DONE
+- Commits: `9bc942e` fix(arbiter): use one clock domain for cooldown checks
+- What changed:
+  - Replaced `clock.uptime` with `clock.now.timeIntervalSinceReferenceDate` in `isInCooldown` and `currentIntent` within `IntentArbiter.swift` so cooldown comparisons match the reference date timestamps set in `commitAction`.
+- Verification (verbatim):
+  - `swift build` → `Build complete! (16.23s)`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 29 tests in 1.085s OK`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: Live recordings now show `predictedIntent` returning to `idle` after cooldown expires instead of being permanently locked in cooldown. Older live recordings may contain inflated `cooldown` stretches. Frame-level metrics across the fix boundary should not be directly compared.
+- NEEDS-USER: none
+
+
