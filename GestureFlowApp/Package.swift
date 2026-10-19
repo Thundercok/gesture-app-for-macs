@@ -13,6 +13,11 @@ let package = Package(
         .executableTarget(
             name: "GestureFlow",
             path: "Sources/GestureFlow"
+        ),
+        .testTarget(
+            name: "GestureFlowTests",
+            dependencies: ["GestureFlow"],
+            path: "Tests/GestureFlowTests"
         )
     ]
 )
