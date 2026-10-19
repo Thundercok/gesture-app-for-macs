@@ -37,6 +37,17 @@ if let calIdx = CommandLine.arguments.firstIndex(of: "--calibrate-replay"), calI
     exit(exitCode)
 }
 
+if let dumpIdx = CommandLine.arguments.firstIndex(of: "--dump-features"), dumpIdx + 1 < CommandLine.arguments.count {
+    let inPath = CommandLine.arguments[dumpIdx + 1]
+    var outPath = "features.csv"
+    if let outIdx = CommandLine.arguments.firstIndex(of: "--out"), outIdx + 1 < CommandLine.arguments.count {
+        outPath = CommandLine.arguments[outIdx + 1]
+    }
+    let useRaw = CommandLine.arguments.contains("--raw")
+    let exitCode = FeatureDumper.dumpFeatures(inputFile: inPath, outputFile: outPath, useRawPoints: useRaw)
+    exit(exitCode)
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()

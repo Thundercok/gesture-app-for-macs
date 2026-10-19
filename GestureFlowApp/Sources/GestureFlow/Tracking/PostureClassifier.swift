@@ -76,7 +76,11 @@ final class PostureClassifier {
 
     /// Normalizes 21 raw landmarks into a canonical 56D feature vector matching tools/export_features.py.
     static func extractFeatures(from landmarks: HandLandmarks) -> [Float]? {
-        let pts = landmarks.points
+        return extractFeatures(fromPoints: landmarks.points)
+    }
+
+    /// Normalizes 21 landmark points into a canonical 56D feature vector matching tools/export_features.py.
+    static func extractFeatures(fromPoints pts: [CGPoint]) -> [Float]? {
         guard pts.count == 21 else { return nil }
 
         let w = pts[0]
