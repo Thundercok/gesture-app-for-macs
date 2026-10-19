@@ -334,6 +334,22 @@
 - Live behaviour change: none.
 - NEEDS-USER: none
 
+## 2026-10-19: WP20 — Headless performance benchmark
+- Status: DONE
+- Commits: `7841ba7` perf(tools): headless replay throughput benchmark
+- What changed:
+  - Compiled release binary via `swift build -c release` with full compiler optimizations.
+  - Implemented `tools/bench_replay.py` constructing a 60,000-frame continuous test stream from synthetic fixtures with monotonic timestamps and sequential frame indexing.
+  - Measured 5 consecutive benchmark iterations executing the release binary headlessly `--replay <stream> --tuning balanced --out /dev/null`.
+  - Authored `docs/gesture/PERFORMANCE.md` recording CPU brand (`Apple M1`), macOS version (`26.5.2`), git SHA (`7193cb1`), median wall time (**7.9964s**), throughput (**7,503.4 frames/sec**), and per-frame latency (**133.27 µs/frame**), explicitly documenting measurement scope (excluding camera capture & Vision model inference).
+- Verification (verbatim):
+  - `python3 tools/bench_replay.py --frames 60000 --runs 5` → `Median wall: 7.9964s, Throughput: 7,503.4 frames/sec, Per-frame cost: 133.27 µs/frame`
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 30 tests in 2.493s OK`
+- Live behaviour change: none (benchmark tooling only).
+- NEEDS-USER: none
+
+
 
 
 
