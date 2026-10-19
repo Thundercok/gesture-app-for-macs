@@ -295,5 +295,30 @@
 - Live behaviour change: none.
 - NEEDS-USER: User alignment on Finding F1 (train on filtered points vs. infer on raw points).
 
+## 2026-10-19: WP18 — Synthetic scenario suite
+- Status: DONE
+- Commits:
+  - `67c1e58` test(replay): synthetic scenarios swipe_right, swipe_up, swipe_down
+  - `3b98c0f` test(replay): synthetic scenarios idle_jitter, slow_swipe, diagonal
+  - `992e292` test(replay): synthetic scenarios pinch_then_swipe, hand_lost_mid_swipe, face_proximity
+  - `592d632` test(replay): synthetic scenarios scroll_down, scroll_up and EXPECTED suite
+- What changed:
+  - Defined explicit expected action mapping for all 13 scenarios in `tools/fixtures/EXPECTED.json`, derived from engine source code and `GestureTuning.balanced`.
+  - Implemented deterministic synthetic generators in `tools/make_synthetic_fixtures.py` across 4 batches:
+    - Batch 1: `synthetic_swipe_right`, `synthetic_swipe_up` ($dy > 0 \to \text{Mission Control}$), `synthetic_swipe_down` ($dy < 0 \to \text{Desktop}$).
+    - Batch 2: `synthetic_idle_jitter` (600 frames, $\sigma=0.003 \to []$), `synthetic_slow_swipe` ($v \approx 0.20 \to []$), `synthetic_diagonal` ($|dx| = |dy| \to []$).
+    - Batch 3: `synthetic_pinch_then_swipe` (moving pinch followed by swipe within 0.10s $< 0.35$s pinch guard $\to []$), `synthetic_hand_lost_mid_swipe` (5 frames tracking loss mid-swipe $\to []$), `synthetic_face_proximity` (downward hand overlapping face box $\to []$).
+    - Batch 4: `synthetic_scroll_down` (two-finger flick $dy > 0 \to [\text{"scroll\_down"}]$), `synthetic_scroll_up` (two-finger flick $dy < 0 \to [\text{"scroll\_up"}]$).
+  - Extended `tools/test_replay.py` to iterate through all 13 fixtures in `EXPECTED.json`, assert exact fired action sequences match, assert 100% byte-for-byte parity against golden references, and verify run-to-run determinism.
+  - Generated and locked 11 new golden references in `tools/golden/` while verifying existing goldens (`synthetic_swipe_left`, `synthetic_pinch`) remain byte-identical.
+- Verification (verbatim):
+  - `python3 -m unittest -v tools/test_replay.py` → `Ran 3 tests in 1.613s OK` (all 13 subtests passed)
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 29 tests in 2.538s OK`
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds`
+  - `git diff tools/golden/synthetic_swipe_left.golden.jsonl tools/golden/synthetic_pinch.golden.jsonl` → empty output
+- Live behaviour change: none (synthetic test suite only).
+- NEEDS-USER: none
+
+
 
 
