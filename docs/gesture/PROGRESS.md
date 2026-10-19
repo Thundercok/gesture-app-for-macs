@@ -193,3 +193,17 @@
   - Updated `GestureFlowApp/README.md` with build/run instructions, macOS TCC permissions table (Camera, Accessibility, Input Monitoring), system modes, sensitivity presets, hotkeys reference table, strict zero-pixel privacy statement, data locations, and offline evaluation/replay/training commands.
   - Created `docs/gesture/CHANGELOG.md` summarizing WP0–WP10 with commit SHAs.
   - Executed final clean build from scratch (`rm -rf GestureFlowApp/.build && swift build`), verified 29/29 Python unit tests, and confirmed byte-for-byte golden replay parity.
+
+## 2026-10-19: WP11 — Repo hygiene
+- Status: DONE
+- Commits: `4274e94` chore(repo): update remote and gitignore
+- What changed:
+  - Updated origin remote URL to `https://github.com/Thundercok/gesture-app-for-macs.git` and verified fetch.
+  - Updated `.gitignore` to explicitly cover `*.mlmodelc` and `tools/data/`.
+  - Checked `git ls-files` for tracked build products or binaries; none found.
+- Verification (verbatim):
+  - `git remote -v` → `origin https://github.com/Thundercok/gesture-app-for-macs.git (fetch)`
+  - `git status` → `nothing to commit, working tree clean`
+- Live behaviour change: none
+- NEEDS-USER: none
+
