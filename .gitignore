@@ -23,6 +23,7 @@ Thumbs.db
 *.app
 *.o
 *.dylib
+*.mlmodelc
 GestureFlowApp/tools/vision_benchmark
 
 # Python / Virtualenv / Cache
@@ -35,3 +36,4 @@ __pycache__/
 .env
 .eggs/
 *.egg-info/
+tools/data/
