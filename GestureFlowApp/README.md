@@ -111,3 +111,24 @@ python3 tools/sweep.py --data ~/Library/Application\ Support/GestureFlow/recordi
 python3 tools/export_features.py --data ~/Library/Application\ Support/GestureFlow/recordings --output /tmp/gf_features/features.csv --split /tmp/gf_features/split.json
 python3 tools/train_posture.py --features /tmp/gf_features/features.csv --split /tmp/gf_features/split.json
 ```
+
+### When you have recordings: One-Command Evaluation Report
+
+Once you have recorded live sessions with `--guided` or accumulated flight-recorder incidents, run the one-command evaluator to produce a complete markdown report:
+
+```bash
+# Generate comprehensive evaluation report across all recordings and incidents
+python3 tools/report.py \
+  --recordings ~/Library/Application\ Support/GestureFlow/recordings \
+  --incidents ~/Library/Application\ Support/GestureFlow/incidents \
+  --out docs/gesture/reports/REPORT_$(date +%Y%m%d).md
+```
+
+This single command:
+1. Inspects every input dataset for frame count, duration, and gesture episodes.
+2. Replays recordings headlessly through the native binary and computes directional recall, false trigger rate, and frame-to-action latency (p50/p95).
+3. Evaluates passive incidents (misfire rate with 95% Wilson confidence intervals).
+4. Evaluates shadow-mode posture classifier agreement if `shadowPosture` is present.
+5. Performs hyperparameter sensitivity sweeps on sessions with $\ge 20$ gesture windows (guarded on smaller datasets).
+6. Populates a report copy of the `ROBUSTNESS.md` condition matrix for matching `robustness_<cond_id>.jsonl` files.
+
