@@ -244,3 +244,19 @@
   - `git diff tools/golden` → empty output (0 differences)
 - Live behaviour change: Users who stored custom preferences prior to WP7 will not encounter decoding failures or drop back to defaults.
 - NEEDS-USER: none
+
+## 2026-10-19: WP15 — Undo routed through ActionSink + tests
+- Status: DONE
+- Commits: `78a408a` refactor(undo): plan inverse actions through ActionSink
+- What changed:
+  - Created `GestureFlowApp/Sources/GestureFlow/Tracking/UndoPlanner.swift` with pure `InverseAction` mapping (`swipe_left` → `.switchSpace(.left)`, `swipe_right` → `.switchSpace(.right)`, `swipe_up` → `.pressEscape`, `swipe_down` → `.toggleShowDesktop`) and localized descriptions.
+  - Added `pressEscape()` to `ActionSink` protocol, implemented in `LiveActionSink` (delegating to `ActionDispatcher.pressEscape()`) and `RecordingActionSink` (recording `"press_escape"`).
+  - Refactored `ActionDispatcher.performUndo` to route execution through `UndoPlanner` and an injected `ActionSink` (defaulting to `LiveActionSink.shared`).
+  - Added `GestureFlowApp/Tests/GestureFlowTests/UndoPlannerTests.swift` covering mapping table across all `FINE_DIRECTIONAL_CLASSES` plus non-directional/invalid inputs, action dispatch recording verification, and `IntentArbiter.recentCommittedAction` 3.0s boundary conditions via `ReplayClock`.
+- Verification (verbatim):
+  - `swift test` → `Executed 8 tests, with 0 failures (0 unexpected) in 0.024 (0.028) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 29 tests in 1.119s OK`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: none (forward and inverse action semantics remain identical).
+- NEEDS-USER: none
+
