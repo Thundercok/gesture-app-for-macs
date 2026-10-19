@@ -27,6 +27,57 @@ struct GestureTuning: Codable, Equatable {
     // Learned Posture Shadow Mode (WP7)
     var useLearnedPosture: Bool = false    // Default false, cannot be flipped without gate passing and user approval
 
+    enum CodingKeys: String, CodingKey {
+        case preset
+        case swipeMinDisplacement
+        case swipeMinVelocity
+        case swipeAxisDominance
+        case openPalmDwellSeconds
+        case pinchCalmHandSpeed
+        case postPinchSwipeGuardSeconds
+        case swipeCooldownSeconds
+        case scrollFlickMinVelocity
+        case useLearnedPosture
+    }
+
+    init(
+        preset: TuningPreset = .balanced,
+        swipeMinDisplacement: CGFloat,
+        swipeMinVelocity: Double,
+        swipeAxisDominance: CGFloat,
+        openPalmDwellSeconds: Double,
+        pinchCalmHandSpeed: Double,
+        postPinchSwipeGuardSeconds: Double,
+        swipeCooldownSeconds: Double,
+        scrollFlickMinVelocity: Double,
+        useLearnedPosture: Bool = false
+    ) {
+        self.preset = preset
+        self.swipeMinDisplacement = swipeMinDisplacement
+        self.swipeMinVelocity = swipeMinVelocity
+        self.swipeAxisDominance = swipeAxisDominance
+        self.openPalmDwellSeconds = openPalmDwellSeconds
+        self.pinchCalmHandSpeed = pinchCalmHandSpeed
+        self.postPinchSwipeGuardSeconds = postPinchSwipeGuardSeconds
+        self.swipeCooldownSeconds = swipeCooldownSeconds
+        self.scrollFlickMinVelocity = scrollFlickMinVelocity
+        self.useLearnedPosture = useLearnedPosture
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.preset = try container.decodeIfPresent(TuningPreset.self, forKey: .preset) ?? .balanced
+        self.swipeMinDisplacement = try container.decode(CGFloat.self, forKey: .swipeMinDisplacement)
+        self.swipeMinVelocity = try container.decode(Double.self, forKey: .swipeMinVelocity)
+        self.swipeAxisDominance = try container.decode(CGFloat.self, forKey: .swipeAxisDominance)
+        self.openPalmDwellSeconds = try container.decode(Double.self, forKey: .openPalmDwellSeconds)
+        self.pinchCalmHandSpeed = try container.decode(Double.self, forKey: .pinchCalmHandSpeed)
+        self.postPinchSwipeGuardSeconds = try container.decode(Double.self, forKey: .postPinchSwipeGuardSeconds)
+        self.swipeCooldownSeconds = try container.decode(Double.self, forKey: .swipeCooldownSeconds)
+        self.scrollFlickMinVelocity = try container.decode(Double.self, forKey: .scrollFlickMinVelocity)
+        self.useLearnedPosture = try container.decodeIfPresent(Bool.self, forKey: .useLearnedPosture) ?? false
+    }
+
     // MARK: - Presets
 
     /// Balanced: EXACTLY the baseline behaviour (regression-safe parity)
