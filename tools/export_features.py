@@ -19,7 +19,26 @@ import csv
 import math
 import random
 import argparse
+import subprocess
+import tempfile
 from typing import List, Tuple, Dict, Any, Optional
+
+
+def find_swift_binary(custom_path: Optional[str] = None) -> Optional[str]:
+    """Finds the compiled GestureFlow binary for headless feature dumping."""
+    if custom_path and os.path.isfile(custom_path) and os.access(custom_path, os.X_OK):
+        return os.path.abspath(custom_path)
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    candidates = [
+        os.path.join(root, "GestureFlowApp/.build/arm64-apple-macosx/release/GestureFlow"),
+        os.path.join(root, "GestureFlowApp/.build/arm64-apple-macosx/debug/GestureFlow"),
+        os.path.join(root, "GestureFlowApp/.build/release/GestureFlow"),
+        os.path.join(root, "GestureFlowApp/.build/debug/GestureFlow"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
 
 LABEL_TO_POSTURE: Dict[str, str] = {
     # Idle / resting / neutral
@@ -238,6 +257,8 @@ def export_features(
     split_json: str,
     test_ratio: float = 0.30,
     seed: int = 42,
+    use_swift_pipeline: bool = False,
+    swift_binary: Optional[str] = None,
 ) -> Dict[str, Any]:
     file_list: List[str] = []
     for p in input_paths:
@@ -252,6 +273,10 @@ def export_features(
     if not file_list:
         print("[Export] No input JSONL files found.")
         return {"total_files": 0, "total_samples": 0}
+
+    swift_bin = find_swift_binary(swift_binary) if use_swift_pipeline else None
+    if use_swift_pipeline and not swift_bin:
+        print("[Export] WARNING: Swift binary not found. Falling back to raw Python feature extraction.")
 
     # Session/file-level split (never by frame!)
     rng = random.Random(seed)
@@ -287,23 +312,60 @@ def export_features(
         for fpath in file_list:
             split_tag = "test" if fpath in test_files else "train"
             frames = parse_frames_from_file(fpath)
-            for fr in frames:
-                try:
-                    feat_vec, _ = normalize_landmarks(fr["raw_points"])
-                except Exception:
-                    continue
 
-                row = [
-                    fr["source_file"],
-                    split_tag,
-                    fr["frame_index"],
-                    fr["timestamp"],
-                    fr["raw_label"],
-                    fr["posture_class"],
-                ] + feat_vec
-                writer.writerow(row)
-                total_samples += 1
-                class_counts[fr["posture_class"]] = class_counts.get(fr["posture_class"], 0) + 1
+            if use_swift_pipeline and swift_bin:
+                out_fd, tmp_csv = tempfile.mkstemp(suffix=".csv")
+                os.close(out_fd)
+                try:
+                    cmd = [swift_bin, "--dump-features", fpath, "--out", tmp_csv]
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    dumped_by_idx: Dict[int, List[float]] = {}
+                    with open(tmp_csv, "r", encoding="utf-8") as dump_f:
+                        r = csv.reader(dump_f)
+                        _ = next(r, None)
+                        for drow in r:
+                            if drow:
+                                try:
+                                    dumped_by_idx[int(drow[0])] = [float(v) for v in drow[1:]]
+                                except Exception:
+                                    continue
+                    for fr in frames:
+                        f_idx = fr["frame_index"]
+                        feat_vec = dumped_by_idx.get(f_idx)
+                        if feat_vec is None or len(feat_vec) != len(feature_col_names):
+                            continue
+                        row = [
+                            fr["source_file"],
+                            split_tag,
+                            f_idx,
+                            fr["timestamp"],
+                            fr["raw_label"],
+                            fr["posture_class"],
+                        ] + feat_vec
+                        writer.writerow(row)
+                        total_samples += 1
+                        class_counts[fr["posture_class"]] = class_counts.get(fr["posture_class"], 0) + 1
+                finally:
+                    if os.path.exists(tmp_csv):
+                        os.remove(tmp_csv)
+            else:
+                for fr in frames:
+                    try:
+                        feat_vec, _ = normalize_landmarks(fr["raw_points"])
+                    except Exception:
+                        continue
+
+                    row = [
+                        fr["source_file"],
+                        split_tag,
+                        fr["frame_index"],
+                        fr["timestamp"],
+                        fr["raw_label"],
+                        fr["posture_class"],
+                    ] + feat_vec
+                    writer.writerow(row)
+                    total_samples += 1
+                    class_counts[fr["posture_class"]] = class_counts.get(fr["posture_class"], 0) + 1
 
     summary = {
         "total_files": len(file_list),
@@ -313,6 +375,7 @@ def export_features(
         "class_counts": class_counts,
         "output_csv": output_csv,
         "split_json": split_json,
+        "used_swift_pipeline": bool(use_swift_pipeline and swift_bin),
     }
     return summary
 
@@ -325,6 +388,8 @@ def main():
     parser.add_argument("--split", default="tools/data/split.json", help="Output split manifest JSON path")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for file split")
     parser.add_argument("--test-ratio", type=float, default=0.30, help="Test file ratio")
+    parser.add_argument("--use-swift-pipeline", action="store_true", help="Extract features through Swift binary pipeline (OneEuroFilter + KinematicHandLimiter) to eliminate train/inference distribution shift")
+    parser.add_argument("--swift-binary", default=None, help="Explicit path to GestureFlow binary for feature dumping")
     args = parser.parse_args()
 
     inputs = list(args.data)
@@ -337,6 +402,8 @@ def main():
         split_json=args.split,
         test_ratio=args.test_ratio,
         seed=args.seed,
+        use_swift_pipeline=args.use_swift_pipeline,
+        swift_binary=args.swift_binary,
     )
     print("=== Feature Export Summary ===")
     print(json.dumps(res, indent=2))

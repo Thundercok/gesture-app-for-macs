@@ -107,6 +107,39 @@ class TestFeatureNormalization(unittest.TestCase):
         for cls_name in LABEL_TO_POSTURE.values():
             self.assertIn(cls_name, POSTURE_CLASSES)
 
+    def test_export_features_with_swift_pipeline(self):
+        """Tests that export_features can delegate to Swift binary pipeline for filtered features."""
+        import os
+        import tempfile
+        import shutil
+        from tools.export_features import export_features, find_swift_binary
+
+        swift_bin = find_swift_binary()
+        if not swift_bin:
+            self.skipTest("GestureFlow binary not compiled")
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            out_csv = os.path.join(temp_dir, "features.csv")
+            out_split = os.path.join(temp_dir, "split.json")
+            fixture = os.path.join(os.path.dirname(__file__), "fixtures", "synthetic_swipe_left.jsonl")
+
+            res = export_features(
+                input_paths=[fixture],
+                output_csv=out_csv,
+                split_json=out_split,
+                use_swift_pipeline=True,
+                swift_binary=swift_bin
+            )
+
+            self.assertTrue(res["used_swift_pipeline"])
+            self.assertTrue(os.path.isfile(out_csv))
+            self.assertTrue(os.path.isfile(out_split))
+            self.assertGreater(res["total_samples"], 0)
+            self.assertGreater(res["class_counts"]["open_palm"], 0)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -444,13 +444,18 @@
 - Live behaviour change: Complete delivery of hands-free master plan on `main`.
 - NEEDS-USER: Live runtime verification using physical hands and camera capture once user is ready (`NEEDS-USER` list in final report).
 
-
-
-
-
-
-
-
-
-
-
+## 2026-10-19: Finding F1 Resolution — Filtered Feature Extraction for Posture Model
+- Status: DONE
+- Commits: pending
+- What changed:
+  - Addressed Finding F1 (domain shift between raw coordinates in `tools/export_features.py` and filtered coordinates in Swift runtime `KinematicHandLimiter` + `OneEuroFilter`).
+  - Added `--use-swift-pipeline` and `--swift-binary` CLI options to `tools/export_features.py`, with automatic discovery of compiled `GestureFlow` binary via `find_swift_binary()`.
+  - When `--use-swift-pipeline` is enabled, feature extraction delegates each JSONL session recording to `GestureFlow --dump-features <input> --out <tmp_csv>`, ensuring training samples reflect the exact live inference coordinate distribution.
+  - Added unit test `test_export_features_with_swift_pipeline` to `tools/test_export_features.py` (33/33 Python tests passing).
+  - Updated `docs/gesture/FINDINGS.md` marking Finding F1 as RESOLVED.
+- Verification (verbatim):
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 33 tests in 10.563s OK`
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.014 (0.021) seconds`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: Training pipeline produces feature vectors that match live inference distribution before model promotion to live gating.
+- NEEDS-USER: none
