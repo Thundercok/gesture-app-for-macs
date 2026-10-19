@@ -385,7 +385,26 @@
   - `gh run list --limit 1` → `*  ci: build, ...  CI  main  push  3920925...`
   - Local tests: Swift 15/15 passed, Python 30/30 passed.
 - Live behaviour change: Automated regression gate established for all future pushes and pull requests.
+## 2026-10-19: WP24 — One-command evaluation report
+- Status: DONE
+- Commits: `91d3cdd` feat(tools): one-command evaluation report
+- What changed:
+  - Implemented `tools/report.py` executing complete evaluation across recordings and incidents with a single command (`--recordings`, `--incidents`, `--out`, `--allow-synthetic`).
+  - Implemented automatic calculation of frame counts, durations, and labeled gesture episodes for all input files.
+  - Implemented headless replay integration with per-class recall, direction confusion, idle false triggers/min, and p50/p95 latency.
+  - Implemented incident log evaluation (fire vs. misfire rate with 95% Wilson score interval).
+  - Implemented shadow-mode posture classifier agreement evaluation when `shadowPosture` is present.
+  - Integrated hyperparameter sensitivity sweep with guard check ($\ge 20$ gesture windows required).
+  - Implemented report copy population of `ROBUSTNESS.md` condition matrix for any matching `robustness_<cond_id>.jsonl` files (never mutating `ROBUSTNESS.md` itself).
+  - Enforced mandatory `SYNTHETIC INPUT — NOT REAL DATA` stamp whenever synthetic fixtures are evaluated.
+  - Created `tools/test_report.py` with 2 test cases asserting full section generation, synthetic banner enforcement, and robustness table population.
+  - Documented one-command evaluator in `GestureFlowApp/README.md`.
+- Verification (verbatim):
+  - `python3 -m unittest -v tools/test_report.py` → `Ran 2 tests in 1.112s OK`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 32 tests in 8.776s OK`
+- Live behaviour change: Users can evaluate all recorded data with one command once real sessions are captured.
 - NEEDS-USER: none
+
 
 
 
