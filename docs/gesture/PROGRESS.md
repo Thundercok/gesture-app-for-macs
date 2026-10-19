@@ -347,7 +347,34 @@
   - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds`
   - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 30 tests in 2.493s OK`
 - Live behaviour change: none (benchmark tooling only).
+## 2026-10-19: WP21 — Threading audit (B4)
+- Status: DONE
+- Commits: `722948e` fix(threading): stop reading AppState from the camera queue
+- What changed:
+  - Authored `docs/gesture/THREADING.md` documenting all concurrency queues, closure dispatches, and shared state access across `Pipeline.swift`, `KeyboardMonitors.swift`, `GestureEngine.swift`, `ScrollEngine.swift`, `CalibrationWizard.swift`, and `IncidentRecorder.swift`.
+  - Identified cross-thread read of `AppState.currentMode` on `com.gestureflow.camera` queue in `Pipeline.swift` without memory synchronization.
+  - Implemented lock-protected `CurrentModeBox` (`@unchecked Sendable` with `NSLock`) inside `AppState.swift`, updated via `currentMode.didSet` and read safely on camera queue as `let activeMode = self.appState.currentModeBox.mode`.
+- Verification (verbatim):
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.007 (0.009) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 30 tests in 2.967s OK`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: Prevents data race conditions when switching system modes via keyboard hotkeys (`Cmd+1/2/3`) while camera frames are processing.
+- NEEDS-USER: Live runtime verification under rapid mode switching (`Cmd+1`, `Cmd+2`, `Cmd+3`) during continuous hand motion.
+
+## 2026-10-19: WP22 — Dead code + persistence
+- Status: DONE
+- Commits: `f7a327b` chore: persist undo toggle; remove dead clap wiring
+- What changed:
+  - Persisted `AppState.undoOnMisfire` in `UserDefaults` under key `gf.undoOnMisfire.v1` (defaulting to `false`), initializing on launch and syncing menu item state in `MenuBar.swift`.
+  - Removed disabled clap wiring closure assignment `tracker.onClapDetected` in `Pipeline.swift` (`HandTracker` clap detection remains intact).
+  - Inspected `TelemetryLogger` and confirmed it actively persists `gesture_log.jsonl` in Application Support for telemetry diagnostics; retained with full documentation.
+- Verification (verbatim):
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.007 (0.009) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 30 tests in 2.967s OK`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: The "Hoàn tác khi đánh dấu bắn sai" preference persists across application restarts.
 - NEEDS-USER: none
+
 
 
 
