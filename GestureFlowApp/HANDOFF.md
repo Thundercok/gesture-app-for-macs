@@ -48,6 +48,10 @@
 
 ## 3. Architecture & Data Flow Pipeline
 
+> [!WARNING]
+> **OUTDATED SECTION (Pre-WP1 Architecture)**: This diagram reflects the early single-engine pipeline prior to WP1–WP25. It lacks `ScrollEngine`, `IntentArbiter`, `ActionSink`, `DatasetRecorder`, `IncidentRecorder`, `PostureClassifier`, and `ReplayRunner`.
+> For the current production architecture and end-to-end pipeline diagram, see [docs/gesture/ARCHITECTURE.md](file:///Users/thundercock2/Documents/Github/Project-G1/docs/gesture/ARCHITECTURE.md).
+
 ```mermaid
 flowchart TD
     Cam[CameraManager: AVCaptureSession 60 FPS] -->|CVPixelBuffer| Tracker[HandTracker: Vision Multi-Hand + Face]
@@ -80,6 +84,10 @@ flowchart TD
 ---
 
 ## 4. File-by-File Breakdown & Technical Responsibilities
+
+> [!WARNING]
+> **OUTDATED SECTION (Partial File List)**: The file list below covers only early v2.2 files. The complete modern codebase includes 35 Swift source files, 4 test suites, and 15 evaluation/benchmarking tools.
+> For the authoritative module list with one line per file, see [docs/gesture/ARCHITECTURE.md](file:///Users/thundercock2/Documents/Github/Project-G1/docs/gesture/ARCHITECTURE.md#3-complete-source-module-directory).
 
 ### 📂 `GestureFlowApp/Sources/GestureFlow/`
 
@@ -187,6 +195,9 @@ flowchart TD
 
 ## 6. Verification Commands & Diagnostics
 
+> [!WARNING]
+> **OUTDATED SECTION (Historical Paths & Makefile Targets)**: The paths below reference a legacy workspace directory (`focused-davinci`). Furthermore, `make install` touches system directories (`/Applications`). For current build, test, replay, and evaluation commands, refer to [GestureFlowApp/README.md](file:///Users/thundercock2/Documents/Github/Project-G1/GestureFlowApp/README.md) and [docs/gesture/EXECUTOR_PLAN_V2.md](file:///Users/thundercock2/Documents/Github/Project-G1/docs/gesture/EXECUTOR_PLAN_V2.md).
+
 ```bash
 cd /Users/thundercock2/Documents/antigravity/focused-davinci/GestureFlowApp
 
@@ -217,7 +228,9 @@ tail -f ~/Library/Application\ Support/GestureFlow/gesture_log.jsonl
    - Currently, Desktop Zoom dispatches discrete `⌘ + +` / `⌘ + -` keystrokes.
    - Investigate posting continuous `CGEvent` with `type: .magnify` or private CoreGraphics multitouch events for fluid smooth zooming in PDF readers and Figma.
 2. **Cursor Mode Implementation**:
-   - Mode switching is supported via Clap (`APP_SW` $\to$ `DESK_ZOOM` $\to$ `CURSOR`).
+   > [!WARNING]
+   > **OUTDATED NOTE**: Clap gesture switching was disabled in WP22 due to false positives on hands entering/leaving frame. System modes are now switched exclusively via `⌘1` (Air Scroll), `⌘2` (Mac Navigation), `⌘3` (Spatial Zoom), or the menu bar.
+   - Mode switching is supported via shortcuts (`⌘1`, `⌘2`, `⌘3`).
    - Implement spatial index-finger raycasting to move the mouse cursor and pinch-to-click.
 3. **Multi-Display & External Webcam Support**:
    - Allow user to select target display or external USB/Continuity camera via the menu bar extra.
