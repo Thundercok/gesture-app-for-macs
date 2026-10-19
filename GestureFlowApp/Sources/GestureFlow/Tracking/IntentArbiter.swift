@@ -119,13 +119,13 @@ final class IntentArbiter {
     var isInCooldown: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return clock.uptime < cooldownUntil
+        return clock.now.timeIntervalSinceReferenceDate < cooldownUntil
     }
 
     var currentIntent: GestureIntent {
         lock.lock()
         defer { lock.unlock() }
-        if clock.uptime >= cooldownUntil && activeIntent == .cooldown {
+        if clock.now.timeIntervalSinceReferenceDate >= cooldownUntil && activeIntent == .cooldown {
             activeIntent = .idle
         }
 
