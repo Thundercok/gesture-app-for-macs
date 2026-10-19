@@ -373,7 +373,20 @@
   - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 30 tests in 2.967s OK`
   - `git diff tools/golden` → empty output (0 differences)
 - Live behaviour change: The "Hoàn tác khi đánh dấu bắn sai" preference persists across application restarts.
+## 2026-10-19: WP23 — Continuous integration
+- Status: DONE
+- Commits: `b49715d` ci: build, swift tests, python tests on macos-14
+- What changed:
+  - Audited all Python test imports; verified that all unit tests in `tools/test_*.py` require solely standard library modules.
+  - Added `.github/workflows/ci.yml` targeting `macos-14` runner with `actions/checkout@v4` and `actions/setup-python@v5`.
+  - Configured automated execution pipeline: `swift build` → `swift test` → `python3 -m unittest discover -s tools -p "test_*.py" -v` on push/PR to `main`.
+  - Pushed to remote and verified active trigger via `gh run list --limit 1`.
+- Verification (verbatim):
+  - `gh run list --limit 1` → `*  ci: build, ...  CI  main  push  3920925...`
+  - Local tests: Swift 15/15 passed, Python 30/30 passed.
+- Live behaviour change: Automated regression gate established for all future pushes and pull requests.
 - NEEDS-USER: none
+
 
 
 
