@@ -127,30 +127,22 @@ enum ActionDispatcher {
         }
     }
 
-    /// Perform the inverse action for a recently auto-fired action (WP9.2).
+    /// Perform the inverse action for a recently auto-fired action (WP9.2, WP15).
     /// Returns a human-readable Vietnamese description of the inverse action performed, or nil if no inverse exists.
     @discardableResult
-    static func performUndo(forAction action: String) -> String? {
-        switch action {
-        case "swipe_left":
-            // swipe_left switched Space to the right; inverse is switching Space to the left
-            switchSpace(.left)
-            return "Đã hoàn tác: Space Trái ←"
-        case "swipe_right":
-            // swipe_right switched Space to the left; inverse is switching Space to the right
-            switchSpace(.right)
-            return "Đã hoàn tác: Space Phải →"
-        case "swipe_up":
-            // swipe_up opened Mission Control; inverse is pressing Escape
-            pressEscape()
-            return "Đã hoàn tác: Thoát Mission Control"
-        case "swipe_down":
-            // swipe_down toggled Show Desktop; inverse is toggling Show Desktop again
-            showDesktop()
-            return "Đã hoàn tác: Hiện lại cửa sổ"
-        default:
+    static func performUndo(forAction action: String, sink: ActionSink = LiveActionSink.shared) -> String? {
+        guard let inverseAction = UndoPlanner.inverse(for: action) else {
             return nil
         }
+        switch inverseAction {
+        case .switchSpace(let direction):
+            sink.switchSpace(direction)
+        case .pressEscape:
+            sink.pressEscape()
+        case .toggleShowDesktop:
+            sink.showDesktop()
+        }
+        return UndoPlanner.description(for: inverseAction)
     }
 
     // MARK: - Air Scroll & Momentum Engine

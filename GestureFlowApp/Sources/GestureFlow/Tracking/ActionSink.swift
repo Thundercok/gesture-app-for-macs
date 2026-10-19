@@ -7,6 +7,7 @@ protocol ActionSink: AnyObject {
     func playHaptic()
     func triggerMissionControl()
     func showDesktop()
+    func pressEscape()
     func getRecentApps() -> [AppItem]
     func activate(app: AppItem)
     func releaseScrollWithMomentum(initialVelocityX: Double, initialVelocityY: Double)
@@ -40,6 +41,10 @@ final class LiveActionSink: ActionSink {
 
     func showDesktop() {
         ActionDispatcher.showDesktop()
+    }
+
+    func pressEscape() {
+        ActionDispatcher.pressEscape()
     }
 
     func getRecentApps() -> [AppItem] {
@@ -123,6 +128,10 @@ final class RecordingActionSink: ActionSink {
 
     func showDesktop() {
         record("showDesktop")
+    }
+
+    func pressEscape() {
+        record("press_escape")
     }
 
     func getRecentApps() -> [AppItem] {
