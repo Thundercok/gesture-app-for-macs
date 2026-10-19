@@ -7,7 +7,6 @@ extension AppDelegate {
             // Modes must be chosen explicitly via Cmd+1/Cmd+2/Cmd+3 or the Menu Bar.
             _ = self
         }
-
         scrollEngine.onAction = { [weak self] actionTitle in
             self?.appState.setAction(actionTitle)
         }
@@ -134,17 +133,18 @@ extension AppDelegate {
             }
 
             // Route to active system mode engine:
-            if self.appState.currentMode == .airScroll {
+            let activeMode = self.appState.currentModeBox.mode
+            if activeMode == .airScroll {
                 self.engine.forceDischarge()
                 if secondaryLandmarks != nil {
                     self.scrollEngine.forceDischarge()
                 } else {
                     self.scrollEngine.process(landmarks)
                 }
-            } else if self.appState.currentMode == .macNavigation {
+            } else if activeMode == .macNavigation {
                 self.scrollEngine.forceDischarge()
                 self.engine.process(landmarks)
-            } else if self.appState.currentMode == .spatialZoom {
+            } else if activeMode == .spatialZoom {
                 self.scrollEngine.forceDischarge()
                 self.engine.forceDischarge()
             }
@@ -155,7 +155,7 @@ extension AppDelegate {
             var isBimanual = false
             var isClutched = false
 
-            if self.appState.currentMode == .spatialZoom, let p = landmarks, let s = secondaryLandmarks {
+            if activeMode == .spatialZoom, let p = landmarks, let s = secondaryLandmarks {
                 let dx = p.handCentroid.x - s.handCentroid.x
                 let dy = p.handCentroid.y - s.handCentroid.y
                 let normSpan = hypot(dx, dy)

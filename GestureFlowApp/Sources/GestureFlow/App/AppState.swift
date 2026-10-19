@@ -72,7 +72,31 @@ enum SystemMode: String, CaseIterable, Identifiable {
     }
 }
 
+final class CurrentModeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _mode: SystemMode = .airScroll
+
+    var mode: SystemMode {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _mode
+        }
+        set {
+            lock.lock()
+            _mode = newValue
+            lock.unlock()
+        }
+    }
+
+    init(mode: SystemMode = .airScroll) {
+        self._mode = mode
+    }
+}
+
 final class AppState: ObservableObject {
+    let currentModeBox = CurrentModeBox()
+
     @Published var currentFrame: NSImage?
     @Published var currentLandmarks: HandLandmarks?
     @Published var handDetected: Bool = false
@@ -106,7 +130,11 @@ final class AppState: ObservableObject {
     }
 
     // Spatial Multi-Mode Engine State (Clap Gesture Switcher)
-    @Published var currentMode: SystemMode = .airScroll
+    @Published var currentMode: SystemMode = .airScroll {
+        didSet {
+            currentModeBox.mode = currentMode
+        }
+    }
     @Published var isModeBannerVisible: Bool = false
     @Published var modeBannerTitle: String = ""
     @Published var modeBannerSubtitle: String = ""
