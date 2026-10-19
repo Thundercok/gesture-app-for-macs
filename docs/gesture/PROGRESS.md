@@ -260,3 +260,21 @@
 - Live behaviour change: none (forward and inverse action semantics remain identical).
 - NEEDS-USER: none
 
+## 2026-10-19: WP16 — Calibration wizard rework (B3)
+- Status: DONE
+- Commits: `bb9e44e` fix(calibration): measure engine-equivalent windowed velocity, thread-safe, revertible
+- What changed:
+  - Extracted pure mathematical routines into `GestureFlowApp/Sources/GestureFlow/Tracking/CalibrationMath.swift` (`windowedPeakVelocity`, `windowedPeakDisplacement`, `derive`, `median`) replicating `GestureEngine.evaluateSwipe` offsets (3...7) and time delta windowing (0.035s <= dt <= 0.180s).
+  - Reworked `CalibrationWizard.swift` with an `NSLock` protecting internal mutable state across timer and frame callbacks, dispatching UI callbacks to `main`, and storing `previousTuningBeforeCalibration` with `revertLastCalibration()`.
+  - Added `case custom` to `TuningPreset`, set it upon calibration completion, ensured graceful fallback to `.balanced` for unrecognised preset strings, and added "Hoàn tác hiệu chuẩn" menu item in `MenuBar.swift`.
+  - Added headless `--calibrate-replay <file.jsonl>` CLI command in `main.swift` via `CalibrationReplayRunner.swift`.
+  - Added unit test suite `CalibrationMathTests.swift` (5 tests covering straight-line motion, jitter robustness vs old per-frame amplification, clamp bounds, and median calculation) and added custom/unknown preset tests to `GestureTuningTests.swift`.
+- Verification (verbatim):
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.007 (0.012) seconds`
+  - `swift run GestureFlow --calibrate-replay tools/fixtures/synthetic_swipe_left.jsonl` → `Trials: 1, Peak Speeds: ["2.917"], Displacements: ["0.220"], Derived Thresholds: swipeMinVelocity=0.85, swipeMinDisplacement=0.110`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 29 tests in 0.292s OK`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: Calibration thresholds now accurately reflect engine-equivalent kinematics without per-frame noise amplification, and calibrated settings can be reverted via the menu bar.
+- NEEDS-USER: Live microphone / camera calibration wizard run remains NEEDS-USER.
+
+
