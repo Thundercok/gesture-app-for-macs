@@ -319,6 +319,22 @@
 - Live behaviour change: none (synthetic test suite only).
 - NEEDS-USER: none
 
+## 2026-10-19: WP19 — Synthetic perturbation harness
+- Status: DONE
+- Commits: `6db4ea0` feat(tools): synthetic perturbation robustness harness
+- What changed:
+  - Created `tools/perturb.py` (stdlib only) providing seeded, deterministic transforms: Gaussian jitter ($\sigma$), frame drop ($p$), downsampling (target fps), monotonic timestamp jitter, and horizontal coordinate mirroring ($x \to 1 - x$) with direction label swapping.
+  - Implemented `tools/robustness_synthetic.py` evaluating all positive synthetic fixtures across 56 test conditions ($\sigma \in \{0, 0.002, 0.005, 0.01\}$, $p \in \{0, 0.10, 0.25\}$, downsampling 60fps/30fps, mirroring) across 10 random seeds (560 headless replay evaluations).
+  - Generated `docs/gesture/SYNTHETIC_ROBUSTNESS.md` with verbatim markdown table, command, git SHA, and mandatory header: **"Synthetic perturbation of synthetic fixtures. Code-path robustness only. Not recognition accuracy on real hands."**
+  - Added `tools/test_robustness_synthetic.py` testing fast mode (1 seed, 2 levels) and header validation to keep automated CI test suite fast and 100% green.
+- Verification (verbatim):
+  - `python3 tools/robustness_synthetic.py` → `Ran 56 conditions x 10 seeds (560 runs) -> docs/gesture/SYNTHETIC_ROBUSTNESS.md`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 30 tests in 2.493s OK`
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds`
+- Live behaviour change: none.
+- NEEDS-USER: none
+
+
 
 
 
