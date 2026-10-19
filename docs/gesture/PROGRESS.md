@@ -416,7 +416,34 @@
   - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.014 (0.017) seconds`
   - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 32 tests in 5.286s OK`
 - Live behaviour change: none (documentation only).
+## 2026-10-19: WP26 — Release build check
+- Status: DONE
+- Commits: none (verification only; no code changes required)
+- What changed:
+  - Executed `swift build -c release` with full optimizations; verified clean compilation and linking without errors or warnings.
+  - Inspected and audited `GestureFlowApp/Makefile` (`build`, `install`, `run`, `stop`, `clean`).
+  - Documented that `make install` copies the `.app` bundle to `/Applications` and codesigns with local identity; refrained from invoking system-modifying targets per project protocol R12.
+- Verification (verbatim):
+  - `swift build -c release` → `Build complete! (169.83s)`
+- Live behaviour change: none.
 - NEEDS-USER: none
+
+## 2026-10-19: WP27 — Final pass and report
+- Status: DONE
+- Commits: `docs(changelog): complete WP11-WP27 changelog and final pass`
+- What changed:
+  - Verified clean debug compilation (`swift build`) and release compilation (`swift build -c release`).
+  - Executed full test suite: 15/15 Swift unit tests passed, 32/32 Python tests passed.
+  - Verified all 13 golden replay outputs in `tools/golden/` remain 100% byte-for-byte identical (`git diff tools/golden` clean).
+  - Updated `docs/gesture/CHANGELOG.md` recording all 17 Work Packages (WP11–WP27) on `main` with commit SHAs.
+  - Prepared final comprehensive executor report covering fixed bugs (B1–B4), architectural findings (F1), hardware-measured benchmarks, and user instructions for live evaluation.
+- Verification (verbatim):
+  - `swift test` → `Executed 15 tests, with 0 failures (0 unexpected) in 0.020 (0.025) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 32 tests in 4.566s OK`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: Complete delivery of hands-free master plan on `main`.
+- NEEDS-USER: Live runtime verification using physical hands and camera capture once user is ready (`NEEDS-USER` list in final report).
+
 
 
 
