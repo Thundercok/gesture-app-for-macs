@@ -5,6 +5,7 @@ enum TuningPreset: String, CaseIterable, Codable {
     case safe = "safe"
     case balanced = "balanced"
     case sensitive = "sensitive"
+    case custom = "custom"
 }
 
 /// Central Gesture Tuning parameters.
@@ -66,7 +67,11 @@ struct GestureTuning: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.preset = try container.decodeIfPresent(TuningPreset.self, forKey: .preset) ?? .balanced
+        if let decodedPreset = try? container.decode(TuningPreset.self, forKey: .preset) {
+            self.preset = decodedPreset
+        } else {
+            self.preset = .balanced
+        }
         self.swipeMinDisplacement = try container.decode(CGFloat.self, forKey: .swipeMinDisplacement)
         self.swipeMinVelocity = try container.decode(Double.self, forKey: .swipeMinVelocity)
         self.swipeAxisDominance = try container.decode(CGFloat.self, forKey: .swipeAxisDominance)
@@ -127,6 +132,10 @@ struct GestureTuning: Codable, Equatable {
         case .safe: return .safe
         case .balanced: return .balanced
         case .sensitive: return .sensitive
+        case .custom:
+            var c = GestureTuning.balanced
+            c.preset = .custom
+            return c
         }
     }
 

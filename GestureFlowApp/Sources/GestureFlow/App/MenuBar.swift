@@ -71,6 +71,10 @@ extension AppDelegate {
         calibrateItem.toolTip = "Đo kích thước bàn tay và tốc độ vuốt tự nhiên (5 lần) trong 60 giây để tự động điều chỉnh ngưỡng cử chỉ."
         menu.addItem(calibrateItem)
 
+        let revertCalibrateItem = NSMenuItem(title: "Hoàn tác hiệu chuẩn", action: #selector(revertCalibration), keyEquivalent: "")
+        revertCalibrateItem.target = self
+        menu.addItem(revertCalibrateItem)
+
         let modeMenu = NSMenu()
         let minimalItem = NSMenuItem(title: "Tối giản (Vector)", action: #selector(setModeMinimal), keyEquivalent: "")
         minimalItem.target = self
@@ -183,6 +187,15 @@ extension AppDelegate {
                 self?.updateTuningMenuState()
             }
             wizard.start()
+        }
+    }
+
+    @objc func revertCalibration() {
+        if CalibrationWizard.shared.revertLastCalibration() {
+            updateTuningMenuState()
+            appState.setAction("Đã hoàn tác hiệu chuẩn")
+        } else {
+            appState.setAction("Không có hiệu chuẩn nào để hoàn tác")
         }
     }
 

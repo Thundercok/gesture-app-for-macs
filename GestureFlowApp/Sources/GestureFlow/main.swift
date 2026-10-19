@@ -31,6 +31,12 @@ if CommandLine.arguments.contains("--test-gates") {
     exit(0)
 }
 
+if let calIdx = CommandLine.arguments.firstIndex(of: "--calibrate-replay"), calIdx + 1 < CommandLine.arguments.count {
+    let calPath = CommandLine.arguments[calIdx + 1]
+    let exitCode = CalibrationReplayRunner.run(filePath: calPath)
+    exit(exitCode)
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()

@@ -76,4 +76,45 @@ final class GestureTuningTests: XCTestCase {
             XCTAssertEqual(decoded, original)
         }
     }
+
+    func testDecodesCustomPreset() throws {
+        var customTuning = GestureTuning.balanced
+        customTuning.preset = .custom
+        customTuning.swipeMinVelocity = 0.58
+        customTuning.swipeMinDisplacement = 0.072
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(customTuning)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(GestureTuning.self, from: data)
+
+        XCTAssertEqual(decoded.preset, .custom)
+        XCTAssertEqual(decoded.swipeMinVelocity, 0.58, accuracy: 1e-6)
+        XCTAssertEqual(decoded.swipeMinDisplacement, 0.072, accuracy: 1e-6)
+    }
+
+    func testDecodesUnknownPresetGracefully() throws {
+        let json = """
+        {
+            "preset": "ultra_extreme_turbo",
+            "swipeMinDisplacement": 0.065,
+            "swipeMinVelocity": 0.50,
+            "swipeAxisDominance": 1.30,
+            "openPalmDwellSeconds": 0.05,
+            "pinchCalmHandSpeed": 0.42,
+            "postPinchSwipeGuardSeconds": 0.35,
+            "swipeCooldownSeconds": 0.45,
+            "scrollFlickMinVelocity": 0.42,
+            "useLearnedPosture": false
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(GestureTuning.self, from: data)
+
+        // Unknown preset strings must not crash, and should default to .balanced
+        XCTAssertEqual(decoded.preset, .balanced)
+        XCTAssertEqual(decoded.swipeMinVelocity, 0.50, accuracy: 1e-6)
+    }
 }
+
