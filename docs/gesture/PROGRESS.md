@@ -232,6 +232,15 @@
   - `git diff tools/golden` → empty output (0 differences)
 - Live behaviour change: none
 - NEEDS-USER: none
-
-
-
+## 2026-10-19: WP14 — Fix B2: Backward-compatible GestureTuning decoding
+- Status: DONE
+- Commits: `e943772` fix(tuning): decode settings saved before useLearnedPosture existed
+- What changed:
+  - Added custom `CodingKeys`, memberwise `init`, and `init(from decoder:)` in `GestureTuning.swift` so that JSON payloads lacking `useLearnedPosture` or `preset` decode with default values (`false` and `.balanced` respectively).
+  - Created `GestureFlowApp/Tests/GestureFlowTests/GestureTuningTests.swift` verifying legacy JSON decoding without `useLearnedPosture`, `TuningPreset.balanced` baseline equivalence, lerp endpoints, and round-trip JSON serialization.
+- Verification (verbatim):
+  - `swift test` → `Executed 5 tests, with 0 failures (0 unexpected) in 0.005 (0.008) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 29 tests in 0.973s OK`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: Users who stored custom preferences prior to WP7 will not encounter decoding failures or drop back to defaults.
+- NEEDS-USER: none
