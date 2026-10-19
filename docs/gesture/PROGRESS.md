@@ -219,4 +219,19 @@
 - Live behaviour change: Live recordings now show `predictedIntent` returning to `idle` after cooldown expires instead of being permanently locked in cooldown. Older live recordings may contain inflated `cooldown` stretches. Frame-level metrics across the fix boundary should not be directly compared.
 - NEEDS-USER: none
 
+## 2026-10-19: WP13 — Swift unit-test target
+- Status: DONE
+- Commits: `ac3df11` test(swift): add GestureFlowTests target
+- What changed:
+  - Added `.testTarget(name: "GestureFlowTests", dependencies: ["GestureFlow"], path: "Tests/GestureFlowTests")` to `GestureFlowApp/Package.swift`.
+  - Created initial test case `GestureFlowApp/Tests/GestureFlowTests/SmokeTests.swift` testing `GestureTuning.balanced.swipeMinVelocity == 0.50` with `@testable import GestureFlow`.
+  - Created executable helper script `tools/run_swift_tests.sh`.
+- Verification (verbatim):
+  - `swift test` → `Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.003) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 29 tests in 0.221s OK`
+  - `git diff tools/golden` → empty output (0 differences)
+- Live behaviour change: none
+- NEEDS-USER: none
+
+
 
