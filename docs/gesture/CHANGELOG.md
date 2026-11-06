@@ -48,6 +48,7 @@ This section records the complete hands-free master plan executed directly on `m
 | **WP32 — Nonlinear Adaptive Viscous Damping Field** | DONE | `9b3685d` | Implemented velocity-dependent quadratic viscous damping field $\mu(v)$ in `CursorEngine.swift` (0.40 Hz honey at low speed, 2.50 Hz glide at high speed) solving Fatal Trap 1. Added `CursorEngineTests.swift` test. |
 | **WP33 — Synthetic CoreML Posture Model & Bundling** | DONE | `5c46095` | Unblocked WP7 CoreML gate hands-free. Built `tools/generate_synthetic_postures.py` (6 sessions), exported 1500 samples via Swift pipeline, trained MLP (1.00 F1 on held-out test), exported CoreML model into `GestureFlowApp/Resources/PostureClassifier.mlmodel`, calibrated hysteresis, added `tools/test_generate_synthetic_postures.py` and `PostureClassifierTests.swift`. |
 | **WP34 — Multi-Action Spatial Mouse Manipulation** | DONE | `e5bf044` | Implemented double-click (rapid pinch repeat with Quartz clickCount=2), right-click (middle-thumb pinch context menu), and in-cursor two-finger wheel scrolling in `CursorEngine.swift`, `ActionDispatcher.swift`, and `ActionSink.swift`. Added unit tests (27/27 passing). |
+| **WP35 — Adaptive Magnetic Snapping Engine** | DONE | *(staged)* | Implemented Module 2 Adaptive Magnetic Snapping Engine (`MagneticSnappingEngine.swift`) with continuous Gaussian potential well and high-speed breakaway escape. Wired into `CursorEngine.swift` with 7 unit tests (34/34 passing). |
 
 
 

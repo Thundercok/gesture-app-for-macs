@@ -56,6 +56,8 @@ final class CursorEngine {
     var doubleClickDistanceThreshold: CGFloat = 25.0
     var scrollGain: CGFloat = 1.0
 
+    public let snappingEngine = MagneticSnappingEngine()
+
     private var lastClickTimestamp: TimeInterval = 0.0
     private var lastClickPos: CGPoint = .zero
 
@@ -152,7 +154,9 @@ final class CursorEngine {
         // Map normalized camera coordinates to display space with edge margin expansion
         let normX = max(0.0, min(1.0, (1.0 - smoothedAnchor.x - interactionMargin) / (1.0 - 2.0 * interactionMargin)))
         let normY = max(0.0, min(1.0, (smoothedAnchor.y - interactionMargin) / (1.0 - 2.0 * interactionMargin)))
-        let currentScreenPos = CGPoint(x: normX * screenSize.width, y: normY * screenSize.height)
+        let rawScreenPos = CGPoint(x: normX * screenSize.width, y: normY * screenSize.height)
+        let speedPx = CGFloat(smoothedAnchorSpeed) * screenSize.width
+        let currentScreenPos = snappingEngine.applySnapping(cursorPos: rawScreenPos, speedPxPerSec: speedPx)
 
         // 4. Compute Normalized Apertures & Velocities
         let wrist = lm.points.count >= 21 ? lm.points[0] : lm.wrist

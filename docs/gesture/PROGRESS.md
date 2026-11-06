@@ -573,4 +573,24 @@
 - Live behaviour change: Full spatial mouse capability (hover, single-click, double-click, right-click context menu, drag & drop, and two-finger wheel scrolling).
 - NEEDS-USER: none
 
+## 2026-11-07: WP35 — Adaptive Magnetic Snapping Engine
+- Status: DONE
+- Commits: *(staged for commit)*
+- What changed:
+  - Implemented Module 2 of `RESEARCH_ROADMAP.md` in `GestureFlowApp/Sources/GestureFlow/Tracking/MagneticSnappingEngine.swift`:
+    1. **Gaussian Potential Well**: Computes smooth $C^\infty$ continuous attraction field $\mathbf{F}_{\text{attract}} = k \cdot (\mathbf{c}_{\text{target}} - \mathbf{p}_{\text{cursor}}) \cdot \exp\left(-\frac{\|\mathbf{p}_{\text{cursor}} - \mathbf{c}_{\text{target}}\|^2}{2\sigma^2}\right)$, providing seamless target gravity without coordinate jumps or discontinuities.
+    2. **Sticky-Trap Breakaway**: Modulates snap force by cursor velocity $w_v(v) \in [0, 1]$. Below $200\text{ px/s}$, full attraction is applied; above $650\text{ px/s}$ (ballistic flicks), attraction drops to zero via Hermite smoothstep interpolation, eliminating the "sticky trap" sensation when passing across UI targets.
+    3. **Nearest-Target Selection**: Avoids saddle-point instability between adjacent UI buttons.
+  - Wired `MagneticSnappingEngine` into `CursorEngine.swift`:
+    - Exposed `public let snappingEngine = MagneticSnappingEngine()`.
+    - Applied snapping dynamically during screen position mapping while preserving $O(1)$ fast return when targets list is empty.
+  - Added unit test suite `GestureFlowApp/Tests/GestureFlowTests/MagneticSnappingEngineTests.swift` (7 tests) covering potential well attraction, basin boundary falloff, high-speed breakaway escape, smooth Hermite modulation, target registration lifecycle, and end-to-end `CursorEngine` integration.
+- Verification (verbatim):
+  - `swift test` → `Executed 34 tests, with 0 failures (0 unexpected) in 0.171 (0.175) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 42 tests in 6.275s OK`
+  - Replay goldens: 15/15 fixtures 100% byte-for-byte identical.
+- Live behaviour change: Smooth magnetic gravity well around registered UI buttons with zero sticky drag during fast ballistic pointer sweeps.
+- NEEDS-USER: none
+
+
 
