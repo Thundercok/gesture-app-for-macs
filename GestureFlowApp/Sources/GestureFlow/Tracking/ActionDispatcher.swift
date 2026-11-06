@@ -280,7 +280,50 @@ enum ActionDispatcher {
         }
     }
 
+    /// Continuous magnification driver
+    static func magnifyContinuous(delta: CGFloat) {
+        magnify(delta: delta)
+    }
+
+
+    // MARK: - Spatial Air Cursor & Mouse Dispatcher
+
+    /// Move mouse cursor to screen point (macOS screen coordinates, top-left origin)
+    static func mouseMove(to point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Press left mouse button down at screen point
+    static func mouseDown(at point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Drag left mouse button to screen point
+    static func mouseDragged(to point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Release left mouse button at screen point
+    static func mouseUp(at point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Click left mouse button (down + up) at screen point
+    static func mouseClick(at point: CGPoint) {
+        mouseDown(at: point)
+        mouseUp(at: point)
+    }
+
     // MARK: - Application Switcher & Activation
+
 
     static func getRecentApps() -> [AppItem] {
         var result: [AppItem] = []

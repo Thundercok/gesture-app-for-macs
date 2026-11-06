@@ -15,7 +15,16 @@ protocol ActionSink: AnyObject {
     var isMomentumActive: Bool { get }
     var onMomentumProgress: ((Double) -> Void)? { get set }
     var onMomentumEnded: (() -> Void)? { get set }
+
+    // Spatial Air Cursor & Mouse Actions
+    func mouseMove(to point: CGPoint)
+    func mouseDown(at point: CGPoint)
+    func mouseDragged(to point: CGPoint)
+    func mouseUp(at point: CGPoint)
+    func mouseClick(at point: CGPoint)
+    func magnifyContinuous(delta: CGFloat)
 }
+
 
 final class LiveActionSink: ActionSink {
     static let shared = LiveActionSink()
@@ -76,7 +85,32 @@ final class LiveActionSink: ActionSink {
         get { ActionDispatcher.onMomentumEnded }
         set { ActionDispatcher.onMomentumEnded = newValue }
     }
+
+    func mouseMove(to point: CGPoint) {
+        ActionDispatcher.mouseMove(to: point)
+    }
+
+    func mouseDown(at point: CGPoint) {
+        ActionDispatcher.mouseDown(at: point)
+    }
+
+    func mouseDragged(to point: CGPoint) {
+        ActionDispatcher.mouseDragged(to: point)
+    }
+
+    func mouseUp(at point: CGPoint) {
+        ActionDispatcher.mouseUp(at: point)
+    }
+
+    func mouseClick(at point: CGPoint) {
+        ActionDispatcher.mouseClick(at: point)
+    }
+
+    func magnifyContinuous(delta: CGFloat) {
+        ActionDispatcher.magnifyContinuous(delta: delta)
+    }
 }
+
 
 final class RecordingActionSink: ActionSink {
     struct DispatchedRecord: Equatable {
@@ -162,6 +196,30 @@ final class RecordingActionSink: ActionSink {
     var onMomentumProgress: ((Double) -> Void)?
     var onMomentumEnded: (() -> Void)?
 
+    func mouseMove(to point: CGPoint) {
+        record("mouse_move_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+    }
+
+    func mouseDown(at point: CGPoint) {
+        record("mouse_down_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+    }
+
+    func mouseDragged(to point: CGPoint) {
+        record("mouse_dragged_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+    }
+
+    func mouseUp(at point: CGPoint) {
+        record("mouse_up_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+    }
+
+    func mouseClick(at point: CGPoint) {
+        record("mouse_click_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+    }
+
+    func magnifyContinuous(delta: CGFloat) {
+        record(String(format: "magnify_continuous_%.4f", delta))
+    }
+
     private func record(_ action: String) {
         lock.lock()
         defer { lock.unlock() }
@@ -177,3 +235,4 @@ final class RecordingActionSink: ActionSink {
         momentumActive = false
     }
 }
+
