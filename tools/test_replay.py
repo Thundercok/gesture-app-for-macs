@@ -124,6 +124,34 @@ class TestReplayHarness(unittest.TestCase):
             if os.path.exists(out_csv):
                 os.remove(out_csv)
 
+    def test_cursor_replay_and_golden_determinism(self):
+
+        cursor_fixtures = [
+            ("synthetic_cursor_click.jsonl", ["cursor_click"]),
+            ("synthetic_cursor_drag.jsonl", ["cursor_drag"]),
+        ]
+        for fixture_name, expected_actions in cursor_fixtures:
+            with self.subTest(fixture=fixture_name):
+                out_path, records, stdout = self._run_replay(
+                    fixture_name,
+                    tuning="balanced",
+                    extra_args=["--mode", "cursor"]
+                )
+                try:
+                    fired_actions = [r["firedAction"] for r in records if r.get("firedAction")]
+                    self.assertEqual(fired_actions, expected_actions)
+                    golden_name = fixture_name.replace(".jsonl", ".golden.jsonl")
+                    golden_path = os.path.join(GOLDEN_DIR, golden_name)
+                    self.assertTrue(os.path.isfile(golden_path), f"Golden reference missing: {golden_path}")
+
+
+                    with open(out_path, "rb") as f_out, open(golden_path, "rb") as f_gold:
+                        self.assertEqual(f_out.read(), f_gold.read(), f"Byte mismatch against {golden_name}")
+                finally:
+                    if os.path.exists(out_path):
+                        os.remove(out_path)
+
 
 if __name__ == "__main__":
     unittest.main()
+

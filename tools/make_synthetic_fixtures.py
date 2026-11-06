@@ -1187,6 +1187,219 @@ def generate_scroll_up_fixture(out_path):
             f.write(json.dumps(r) + "\n")
     print(f"Generated {len(records)} frames to {out_path}")
 
+def generate_cursor_click_fixture(out_path):
+    records = []
+    t = 1.0
+    dt = 0.016
+    frame_idx = 0
+
+    # Phase 1: 15 frames hovering at cx=0.50, cy=0.50
+    for _ in range(15):
+        pts = make_open_palm_landmarks(0.50, 0.50)
+        records.append({
+            "timestamp": round(t, 4),
+            "frameIndex": frame_idx,
+            "groundTruth": "cursor",
+            "predictedIntent": "idle",
+            "firedIntent": "",
+            "firedAction": "",
+            "handDetected": True,
+            "fingerCount": 4,
+            "isPinching": False,
+            "isTwoFingers": False,
+            "isRaisedHand": True,
+            "estimatedDepth": 0.40,
+            "facingCamera": 0.90,
+            "primaryPoints": pts_to_records(pts),
+            "confidence": [1.0] * 21
+        })
+        t += dt
+        frame_idx += 1
+
+    # Phase 2: 5 frames decelerating aperture (closing to pinch) with physiological deflection (cx drifts 0.50 -> 0.525)
+    for i in range(5):
+        alpha = (i + 1) / 5.0
+        drift_x = 0.50 + 0.025 * alpha
+        pts = make_open_palm_landmarks(drift_x, 0.50)
+        # Progressively move thumb tip towards index tip
+        touch_pt = (drift_x - 0.03, 0.50 - 0.04)
+        orig_thumb = pts[4]
+        pts[4] = (orig_thumb[0] + (touch_pt[0] - orig_thumb[0]) * alpha, orig_thumb[1] + (touch_pt[1] - orig_thumb[1]) * alpha)
+        records.append({
+            "timestamp": round(t, 4),
+            "frameIndex": frame_idx,
+            "groundTruth": "cursor",
+            "predictedIntent": "idle",
+            "firedIntent": "",
+            "firedAction": "",
+            "handDetected": True,
+            "fingerCount": 4,
+            "isPinching": False,
+            "isTwoFingers": False,
+            "isRaisedHand": True,
+            "estimatedDepth": 0.40,
+            "facingCamera": 0.90,
+            "primaryPoints": pts_to_records(pts),
+            "confidence": [1.0] * 21
+        })
+        t += dt
+        frame_idx += 1
+
+    # Phase 3: 5 frames pinched at drifted location
+    for _ in range(5):
+        pts = make_pinch_landmarks(0.525, 0.50)
+        records.append({
+            "timestamp": round(t, 4),
+            "frameIndex": frame_idx,
+            "groundTruth": "cursor",
+            "predictedIntent": "air_cursor",
+            "firedIntent": "",
+            "firedAction": "",
+            "handDetected": True,
+            "fingerCount": 3,
+            "isPinching": True,
+            "isTwoFingers": False,
+            "isRaisedHand": True,
+            "estimatedDepth": 0.40,
+            "facingCamera": 0.90,
+            "primaryPoints": pts_to_records(pts),
+            "confidence": [1.0] * 21
+        })
+        t += dt
+        frame_idx += 1
+
+    # Phase 4: 10 frames open palm release
+    for _ in range(10):
+        pts = make_open_palm_landmarks(0.50, 0.50)
+        records.append({
+            "timestamp": round(t, 4),
+            "frameIndex": frame_idx,
+            "groundTruth": "cursor",
+            "predictedIntent": "idle",
+            "firedIntent": "",
+            "firedAction": "",
+            "handDetected": True,
+            "fingerCount": 4,
+            "isPinching": False,
+            "isTwoFingers": False,
+            "isRaisedHand": True,
+            "estimatedDepth": 0.40,
+            "facingCamera": 0.90,
+            "primaryPoints": pts_to_records(pts),
+            "confidence": [1.0] * 21
+        })
+        t += dt
+        frame_idx += 1
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        for r in records:
+            f.write(json.dumps(r) + "\n")
+    print(f"Generated {len(records)} frames to {out_path}")
+
+def generate_cursor_drag_fixture(out_path):
+    records = []
+    t = 1.0
+    dt = 0.016
+    frame_idx = 0
+
+    # Phase 1: 10 frames hovering at cx=0.60, cy=0.50
+    for _ in range(10):
+        pts = make_open_palm_landmarks(0.60, 0.50)
+        records.append({
+            "timestamp": round(t, 4),
+            "frameIndex": frame_idx,
+            "groundTruth": "cursor",
+            "predictedIntent": "idle",
+            "firedIntent": "",
+            "firedAction": "",
+            "handDetected": True,
+            "fingerCount": 4,
+            "isPinching": False,
+            "isTwoFingers": False,
+            "isRaisedHand": True,
+            "estimatedDepth": 0.40,
+            "facingCamera": 0.90,
+            "primaryPoints": pts_to_records(pts),
+            "confidence": [1.0] * 21
+        })
+        t += dt
+        frame_idx += 1
+
+    # Phase 2: 3 frames pinch down at cx=0.60
+    for _ in range(3):
+        pts = make_pinch_landmarks(0.60, 0.50)
+        records.append({
+            "timestamp": round(t, 4),
+            "frameIndex": frame_idx,
+            "groundTruth": "cursor",
+            "predictedIntent": "air_cursor",
+            "firedIntent": "",
+            "firedAction": "",
+            "handDetected": True,
+            "fingerCount": 3,
+            "isPinching": True,
+            "isTwoFingers": False,
+            "isRaisedHand": True,
+            "estimatedDepth": 0.40,
+            "facingCamera": 0.90,
+            "primaryPoints": pts_to_records(pts),
+            "confidence": [1.0] * 21
+        })
+        t += dt
+        frame_idx += 1
+
+    # Phase 3: 15 frames dragging left from cx=0.60 to cx=0.35 while pinched
+    for i in range(15):
+        cx = 0.60 - 0.25 * ((i + 1) / 15.0)
+        pts = make_pinch_landmarks(cx, 0.50)
+        records.append({
+            "timestamp": round(t, 4),
+            "frameIndex": frame_idx,
+            "groundTruth": "cursor",
+            "predictedIntent": "air_cursor",
+            "firedIntent": "",
+            "firedAction": "",
+            "handDetected": True,
+            "fingerCount": 3,
+            "isPinching": True,
+            "isTwoFingers": False,
+            "isRaisedHand": True,
+            "estimatedDepth": 0.40,
+            "facingCamera": 0.90,
+            "primaryPoints": pts_to_records(pts),
+            "confidence": [1.0] * 21
+        })
+        t += dt
+        frame_idx += 1
+
+    # Phase 4: 10 frames released at cx=0.35
+    for _ in range(10):
+        pts = make_open_palm_landmarks(0.35, 0.50)
+        records.append({
+            "timestamp": round(t, 4),
+            "frameIndex": frame_idx,
+            "groundTruth": "cursor",
+            "predictedIntent": "idle",
+            "firedIntent": "",
+            "firedAction": "",
+            "handDetected": True,
+            "fingerCount": 4,
+            "isPinching": False,
+            "isTwoFingers": False,
+            "isRaisedHand": True,
+            "estimatedDepth": 0.40,
+            "facingCamera": 0.90,
+            "primaryPoints": pts_to_records(pts),
+            "confidence": [1.0] * 21
+        })
+        t += dt
+        frame_idx += 1
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        for r in records:
+            f.write(json.dumps(r) + "\n")
+    print(f"Generated {len(records)} frames to {out_path}")
+
 if __name__ == "__main__":
     os.makedirs("tools/fixtures", exist_ok=True)
     generate_swipe_left_fixture("tools/fixtures/synthetic_swipe_left.jsonl")
@@ -1202,4 +1415,7 @@ if __name__ == "__main__":
     generate_face_proximity_fixture("tools/fixtures/synthetic_face_proximity.jsonl")
     generate_scroll_down_fixture("tools/fixtures/synthetic_scroll_down.jsonl")
     generate_scroll_up_fixture("tools/fixtures/synthetic_scroll_up.jsonl")
+    generate_cursor_click_fixture("tools/fixtures/synthetic_cursor_click.jsonl")
+    generate_cursor_drag_fixture("tools/fixtures/synthetic_cursor_drag.jsonl")
+
 

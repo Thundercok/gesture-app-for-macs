@@ -459,3 +459,63 @@
   - `git diff tools/golden` → empty output (0 differences)
 - Live behaviour change: Training pipeline produces feature vectors that match live inference distribution before model promotion to live gating.
 - NEEDS-USER: none
+
+## 2026-11-07: WP28 — Kinematic Diagnostics & Unit Tests
+- Status: DONE
+- Commits: `9c0c2b5` feat(tools): add kinematic diagnostic tool and unit tests
+- What changed:
+  - Created `tools/plot_kinematics.py` for analyzing Rest Jitter (Index Tip vs Middle MCP RMS & P2P), Ballistic Phase Lag, and Heisenberg Click Deflection.
+  - Optimized for headless execution by lazy-importing `matplotlib` only when plot saving (`--out-png`) or display (`--show`) is requested.
+  - Implemented unit test suite `tools/test_plot_kinematics.py` with 5 automated test cases.
+- Verification (verbatim):
+  - `python3 -m unittest tools/test_plot_kinematics.py -v` → `Ran 5 tests in 0.268s OK`
+  - `python3 tools/plot_kinematics.py tools/fixtures/synthetic_pinch.jsonl --json` → clean JSON output in 0.08s
+- Live behaviour change: none (diagnostic tooling only).
+- NEEDS-USER: none
+
+## 2026-11-07: WP29 — CoreGraphics Mouse & Magnify Actions in ActionSink
+- Status: DONE
+- Commits: `df81691` feat(actions): add mouse event dispatching and continuous magnification to ActionSink
+- What changed:
+  - Extended `ActionSink` protocol with `mouseMove(to:)`, `mouseDown(at:)`, `mouseDragged(to:)`, `mouseUp(at:)`, `mouseClick(at:)`, and `magnifyContinuous(delta:)`.
+  - Implemented real `CGEvent` mouse event generation in `ActionDispatcher` and `LiveActionSink`.
+  - Implemented thread-safe action recording in `RecordingActionSink`.
+  - Added unit test suite `GestureFlowApp/Tests/GestureFlowTests/ActionSinkTests.swift`.
+- Verification (verbatim):
+  - `swift test` → `Executed 16 tests, with 0 failures (0 unexpected) in 0.013 (0.020) seconds`
+- Live behaviour change: Native OS pointer and magnification events can now be cleanly dispatched and mocked.
+- NEEDS-USER: none
+
+## 2026-11-07: WP30 — CursorEngine & Pre-Click Anchor Locking (Mode 4)
+- Status: DONE
+- Commits: `efd3560` feat(cursor): implement CursorEngine with Pre-Click Anchor Locking and Mode 4
+- What changed:
+  - Created `GestureFlowApp/Sources/GestureFlow/Tracking/CursorEngine.swift`:
+    - Pointing via Middle MCP anchor filtered with `PointFilter2D` (1€ filter).
+    - Pre-Click Anchor Locking: freezes cursor coordinate during the 35-50ms pinch onset window ($d\text{Ap}/dt < -0.70$), mathematically eliminating the 5-15px Heisenberg Click Deflection.
+    - Full click and drag state machine (`.idle`, `.pointing`, `.preClickLocked`, `.clicking`, `.dragging`).
+  - Added `SystemMode.airCursor` (`⌘4`, "Air Cursor") to `AppState.swift` and `MenuBar.swift`.
+  - Added `case airCursor = "air_cursor"` to `IntentArbiter.swift`.
+  - Wired `cursorEngine` into `Pipeline.swift` with mutual discharge guarantees across modes.
+  - Added headless `--mode cursor` execution to `ReplayRunner.swift`.
+  - Added unit test suite `GestureFlowApp/Tests/GestureFlowTests/CursorEngineTests.swift` (4 tests).
+- Verification (verbatim):
+  - `swift test` → `Executed 20 tests, with 0 failures (0 unexpected) in 0.107 (0.115) seconds`
+- Live behaviour change: Adds Mode 4 (Air Cursor) accessible via menu bar or `⌘4`.
+- NEEDS-USER: none
+
+## 2026-11-07: WP31 — Synthetic Cursor Scenarios, Goldens, and Replay Determinism
+- Status: DONE
+- Commits: pending
+- What changed:
+  - Added `generate_cursor_click_fixture` and `generate_cursor_drag_fixture` to `tools/make_synthetic_fixtures.py`.
+  - Generated deterministic test fixtures: `tools/fixtures/synthetic_cursor_click.jsonl` (35 frames) and `tools/fixtures/synthetic_cursor_drag.jsonl` (38 frames).
+  - Executed `plot_kinematics.py` on `synthetic_cursor_click.jsonl`: confirmed 74.1% baseline deflection reduction via Middle MCP, and 100% elimination with pre-click anchor locking.
+  - Generated and locked golden references in `tools/golden/` (`synthetic_cursor_click.golden.jsonl`, `synthetic_cursor_drag.golden.jsonl`).
+  - Extended `tools/test_replay.py` with `test_cursor_replay_and_golden_determinism` verifying exact fired actions and byte-for-byte golden matching.
+- Verification (verbatim):
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 39 tests in 5.137s OK`
+  - `swift test` → `Executed 20 tests, with 0 failures (0 unexpected) in 0.072 (0.076) seconds`
+- Live behaviour change: none (synthetic test suite and golden references only).
+- NEEDS-USER: none
+

@@ -41,4 +41,9 @@ This section records the complete hands-free master plan executed directly on `m
 | **WP25 — Architecture & Data Schema Docs** | DONE | `3d3ea50` | Authored `docs/gesture/ARCHITECTURE.md` (complete Mermaid dataflow, threading reference, verified module catalog), `docs/gesture/DATA_SCHEMA.md` (22 `HandFrameRecord` fields with verbatim JSON fixture example), and added warning banners to outdated sections in `GestureFlowApp/HANDOFF.md`. |
 | **WP26 — Release Build Check** | DONE | *(verified)* | Confirmed clean release build (`swift build -c release`). Audited `GestureFlowApp/Makefile` targets without executing system-modifying installation commands. |
 | **WP27 — Final Pass and Report** | DONE | *(final report)* | Verified all test suites pass (15/15 Swift, 32/32 Python), all 13 goldens byte-identical, updated changelog and progress logs, and generated final verification summary. |
+| **WP28 — Kinematic Diagnostics & Unit Tests** | DONE | `9c0c2b5` | Created `tools/plot_kinematics.py` for analyzing Rest Jitter, Ballistic Phase Lag, and Heisenberg Click Deflection. Added `tools/test_plot_kinematics.py` (5 tests). |
+| **WP29 — CoreGraphics Mouse & Magnify Actions** | DONE | `df81691` | Extended `ActionSink` protocol with `mouseMove`, `mouseDown`, `mouseDragged`, `mouseUp`, `mouseClick`, and `magnifyContinuous`. Added `ActionSinkTests.swift`. |
+| **WP30 — CursorEngine & Mode 4** | DONE | `efd3560` | Implemented `CursorEngine.swift` with Pre-Click Anchor Locking and Middle MCP pointing. Added `SystemMode.airCursor` (`⌘4`). Added `CursorEngineTests.swift` (4 tests). |
+| **WP31 — Synthetic Cursor Scenarios & Goldens** | DONE | `pending` | Added synthetic cursor click and drag fixtures in `tools/make_synthetic_fixtures.py`, locked golden references in `tools/golden/`, and added `test_cursor_replay_and_golden_determinism` in `tools/test_replay.py`. |
+
 
