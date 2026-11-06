@@ -575,7 +575,7 @@
 
 ## 2026-11-07: WP35 — Adaptive Magnetic Snapping Engine
 - Status: DONE
-- Commits: *(staged for commit)*
+- Commits: `47ad180` feat(tracking): implement adaptive magnetic snapping engine with breakaway escape
 - What changed:
   - Implemented Module 2 of `RESEARCH_ROADMAP.md` in `GestureFlowApp/Sources/GestureFlow/Tracking/MagneticSnappingEngine.swift`:
     1. **Gaussian Potential Well**: Computes smooth $C^\infty$ continuous attraction field $\mathbf{F}_{\text{attract}} = k \cdot (\mathbf{c}_{\text{target}} - \mathbf{p}_{\text{cursor}}) \cdot \exp\left(-\frac{\|\mathbf{p}_{\text{cursor}} - \mathbf{c}_{\text{target}}\|^2}{2\sigma^2}\right)$, providing seamless target gravity without coordinate jumps or discontinuities.
