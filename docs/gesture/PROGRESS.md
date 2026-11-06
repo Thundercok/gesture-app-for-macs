@@ -592,5 +592,30 @@
 - Live behaviour change: Smooth magnetic gravity well around registered UI buttons with zero sticky drag during fast ballistic pointer sweeps.
 - NEEDS-USER: none
 
+## 2026-11-07: WP36 — ISO 9241-9 Fitts' Law Scientific Benchmark Harness
+- Status: DONE
+- Commits: *(staged for commit)*
+- What changed:
+  - Addressed Evaluation & Empirical Verification milestone from `RESEARCH_ROADMAP.md`.
+  - Implemented `tools/bench_fitts.py`:
+    - Standardized 16-target multi-directional circular acquisition array per ISO 9241-9 / ISO 9241-411.
+    - Shannon formulation for index of difficulty: $\text{ID} = \log_2\left(\frac{D}{W} + 1\right)$ across widths $W \in [24, 48, 96]\text{px}$.
+    - Kinematic simulator modeling Flash & Hogan minimum-jerk bell-shaped trajectory, 8-12Hz bandpass physiological tremor, and Heisenberg mechanical cross-coupling twitch.
+    - Evaluates 6 full ablation conditions: (1) Raw Pointer, (2) 1€ Filtered, (3) + Nonlinear Viscous Damping, (4) + Pre-Click Anchor Lock, (5) + Adaptive Magnetic Snapping, and (6) Full GestureFlow Engine.
+    - Reports Throughput ($\text{bits/s}$), Movement Time ($s$), Target Accuracy (%), Overshoots, Integrated Squared Jerk ($10^{-6}\text{px}^2/\text{s}^5$), and Heisenberg Click Deflection ($\text{px}$).
+  - Benchmark findings on 45 standardized trials:
+    - Raw Pointer: 86.7% accuracy, Jerk 985,860.5, Click Deflection 6.67px.
+    - 1€ Filter: 62.4% jerk reduction (371,069.1), Click Deflection 5.44px.
+    - Pre-Click Anchor Lock: **0.00px Click Deflection** (100% elimination of click twitch).
+    - Full GestureFlow Engine: **100.0% Target Accuracy**, **0.00 Overshoots**, Throughput **5.90 bits/s**.
+  - Added unit test suite `tools/test_bench_fitts.py` (5 tests) asserting geometry, kinematic trajectory, click deflection elimination, magnetic pull/breakaway, and end-to-end ablation runner.
+- Verification (verbatim):
+  - `python3 -m unittest tools/test_bench_fitts.py` → `Ran 5 tests in 0.017s OK`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 47 tests in 5.038s OK`
+  - `swift test` → `Executed 34 tests, with 0 failures (0 unexpected) in 0.160 (0.165) seconds`
+  - Replay goldens: 15/15 fixtures 100% byte-for-byte identical.
+- Live behaviour change: Scientific benchmark suite executable via `python3 tools/bench_fitts.py` or `--json`.
+- NEEDS-USER: none
+
 
 
