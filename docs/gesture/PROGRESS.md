@@ -538,7 +538,7 @@
 
 ## 2026-11-07: WP33 — Synthetic CoreML Posture Model Training & Bundling
 - Status: DONE
-- Commits: *(staged for commit)*
+- Commits: `5c46095` feat(ml): train and bundle synthetic CoreML posture model, unblocking WP7 gate
 - What changed:
   - Addressed WP7 CoreML classification gate hands-free without requiring physical webcam or user capture.
   - Created `tools/generate_synthetic_postures.py` generating 6 multi-subject synthetic recording sessions in `tools/data/synthetic_sessions/` across all 5 canonical posture classes (`open_palm`, `pinch`, `two_fingers`, `fist`, `none`).
@@ -553,6 +553,24 @@
   - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 42 tests in 6.518s OK`
   - `PostureClassifier.shared.isAvailable` → `true`
 - Live behaviour change: Unlocks learned posture classification on Apple Neural Engine in shadow mode with 0 warnings.
+- NEEDS-USER: none
+
+## 2026-11-07: WP34 — Multi-Action Spatial Mouse Manipulation
+- Status: DONE
+- Commits: *(staged for commit)*
+- What changed:
+  - Addressed Module 1 full multi-action desktop mouse fidelity in `CursorEngine.swift`, `ActionDispatcher.swift`, and `ActionSink.swift`:
+    1. **Double-Click**: Fast dual-pinch sequences within `doubleClickInterval = 0.35s` and `doubleClickDistanceThreshold = 25.0px` dispatch native Quartz double-clicks (`clickCount = 2`) via `actionSink.mouseClick(at: downPos, clickCount: 2)` and commit `cursor_double_click`.
+    2. **Right-Click (Context Menu)**: Detects middle-thumb pinch (`thumbMiddleAperture < pinchCommitAperture` while `currentAperture > pinchReleaseAperture`). Locks cursor coordinate on down and dispatches native Quartz right-click on release via `actionSink.rightClick(at: downPos)`, committing `cursor_right_click`.
+    3. **In-Cursor Two-Finger Scroll Wheel**: When `isTwoFingers` posture is active during pointing, transitions cursor to in-place `.scrolling`. Computes vertical displacement $\Delta y = (\text{screenPos}.y - \text{lastScrollPos}.y) \cdot \text{scrollGain}$ and dispatches pixel-accurate macOS scroll events via `actionSink.scrollWheel(deltaX: 0, deltaY: deltaY)`.
+  - Extended `ActionSink` protocol and `RecordingActionSink` with `mouseClick(at:clickCount:)`, `rightMouseDown`, `rightMouseUp`, `rightClick`, and `scrollWheel`.
+  - Added unit tests in `ActionSinkTests.swift` covering all multi-action mouse methods.
+  - Added unit tests in `CursorEngineTests.swift`: `testDoubleClickDispatchesClickCountTwo`, `testRightClickDispatchesOnMiddleThumbPinch`, and `testInCursorTwoFingerScrollDispatchesScrollWheel`.
+- Verification (verbatim):
+  - `swift test` → `Executed 27 tests, with 0 failures (0 unexpected) in 0.123 (0.127) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 42 tests in 8.284s OK`
+  - Replay goldens: 15/15 fixtures 100% byte-for-byte identical.
+- Live behaviour change: Full spatial mouse capability (hover, single-click, double-click, right-click context menu, drag & drop, and two-finger wheel scrolling).
 - NEEDS-USER: none
 
 

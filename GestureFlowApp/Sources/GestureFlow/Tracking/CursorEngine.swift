@@ -15,6 +15,8 @@ final class CursorEngine {
         case preClickLocked(anchorPos: CGPoint, lockUntil: TimeInterval)
         case clicking(downPos: CGPoint, startTime: TimeInterval)
         case dragging(downPos: CGPoint)
+        case rightClicking(downPos: CGPoint, startTime: TimeInterval)
+        case scrolling(lastScrollPos: CGPoint)
     }
 
     // Dependencies
@@ -43,13 +45,19 @@ final class CursorEngine {
     private var lastProcessTimestamp: TimeInterval = 0.0
     private var previousAperture: CGFloat = 0.80
 
-    // Thresholds & Tunings
+    // Multi-Action Spatial Mouse Thresholds & Tunings
     var preClickApertureThreshold: CGFloat = 0.48
     var preClickVelocityThreshold: CGFloat = -0.70 // norm_aperture / sec
     var preClickLockDuration: TimeInterval = 0.045 // 45ms freeze
     var pinchCommitAperture: CGFloat = 0.22
     var pinchReleaseAperture: CGFloat = 0.28
     var dragThresholdPx: CGFloat = 16.0
+    var doubleClickInterval: TimeInterval = 0.35
+    var doubleClickDistanceThreshold: CGFloat = 25.0
+    var scrollGain: CGFloat = 1.0
+
+    private var lastClickTimestamp: TimeInterval = 0.0
+    private var lastClickPos: CGPoint = .zero
 
     // Callbacks
     var onAction: ((String) -> Void)?
@@ -80,6 +88,8 @@ final class CursorEngine {
         smoothedAnchorSpeed = 0.0
         currentCutoff = minCutoffLowSpeed
         pointFilter.minCutoff = minCutoffLowSpeed
+        lastClickTimestamp = 0.0
+        lastClickPos = .zero
     }
 
     func process(_ landmarks: HandLandmarks?) {
@@ -144,10 +154,11 @@ final class CursorEngine {
         let normY = max(0.0, min(1.0, (smoothedAnchor.y - interactionMargin) / (1.0 - 2.0 * interactionMargin)))
         let currentScreenPos = CGPoint(x: normX * screenSize.width, y: normY * screenSize.height)
 
-        // 4. Compute Normalized Aperture & Velocity
+        // 4. Compute Normalized Apertures & Velocities
         let wrist = lm.points.count >= 21 ? lm.points[0] : lm.wrist
         let thumbTip = lm.points.count >= 21 ? lm.points[4] : lm.thumbTip
         let indexTip = lm.points.count >= 21 ? lm.points[8] : lm.indexTip
+        let middleTip = lm.points.count >= 21 ? lm.points[12] : lm.middleTip
         let middleMCP = lm.points.count >= 21 ? lm.points[9] : anchor
 
         let palmSpan = max(0.05, hypot(middleMCP.x - wrist.x, middleMCP.y - wrist.y))
@@ -155,7 +166,10 @@ final class CursorEngine {
         let apertureVelocity = (currentAperture - previousAperture) / CGFloat(dt)
         previousAperture = currentAperture
 
+        let thumbMiddleAperture = hypot(thumbTip.x - middleTip.x, thumbTip.y - middleTip.y) / palmSpan
+
         let isPinchDetected = lm.isPinching || (currentAperture < pinchCommitAperture)
+        let isMiddlePinchDetected = (thumbMiddleAperture < pinchCommitAperture) && (thumbMiddleAperture < currentAperture - 0.08) && (currentAperture > pinchReleaseAperture)
 
         // 5. State Machine Transition Logic
         switch state {
@@ -169,18 +183,24 @@ final class CursorEngine {
 
         case .pointing:
             if isPinchDetected {
-                // Pinch already committed (fingers in contact)
+                // Primary Left Pinch committed
                 commitPinchDown(at: currentScreenPos, now: now)
+            } else if lm.isTwoFingers {
+                // Two fingers extended -> Enter In-Cursor Scroll Wheel
+                arbiter.claim(intent: .airCursor)
+                state = .scrolling(lastScrollPos: currentScreenPos)
             } else if currentAperture <= preClickApertureThreshold && apertureVelocity <= preClickVelocityThreshold {
-                // Fingers rapidly clamping toward pinch: freeze cursor coordinate
+                // Fingers rapidly clamping toward left pinch: freeze cursor coordinate
                 state = .preClickLocked(anchorPos: currentScreenPos, lockUntil: now + preClickLockDuration)
                 lastValidScreenPos = currentScreenPos
+            } else if isMiddlePinchDetected {
+                // Secondary Middle-Thumb Pinch committed -> Right Click Down
+                commitRightClickDown(at: currentScreenPos, now: now)
             } else {
                 lastValidScreenPos = currentScreenPos
                 actionSink.mouseMove(to: currentScreenPos)
                 onCursorMoved?(currentScreenPos)
             }
-
 
         case .preClickLocked(let lockedPos, let lockUntil):
             if isPinchDetected {
@@ -205,12 +225,22 @@ final class CursorEngine {
                     onCursorMoved?(currentScreenPos)
                 }
             } else if currentAperture >= pinchReleaseAperture {
-                // Released pinch -> Click commit
+                // Released pinch -> Click commit (Single vs Double Click)
                 actionSink.mouseUp(at: downPos)
                 let duration = now - startTime
                 if duration <= 0.40 {
-                    arbiter.commitAction(gesture: .airCursor, action: "cursor_click", now: now)
-                    onAction?("Click")
+                    let clickDist = hypot(downPos.x - lastClickPos.x, downPos.y - lastClickPos.y)
+                    if (now - lastClickTimestamp) <= doubleClickInterval && clickDist <= doubleClickDistanceThreshold {
+                        actionSink.mouseClick(at: downPos, clickCount: 2)
+                        arbiter.commitAction(gesture: .airCursor, action: "cursor_double_click", now: now)
+                        onAction?("Double Click")
+                        lastClickTimestamp = 0.0
+                    } else {
+                        arbiter.commitAction(gesture: .airCursor, action: "cursor_click", now: now)
+                        onAction?("Click")
+                        lastClickTimestamp = now
+                        lastClickPos = downPos
+                    }
                 } else {
                     arbiter.commitAction(gesture: .airCursor, action: "cursor_release", now: now)
                 }
@@ -224,15 +254,45 @@ final class CursorEngine {
         case .dragging:
             if isPinchDetected {
                 actionSink.mouseDragged(to: currentScreenPos)
-
                 lastValidScreenPos = currentScreenPos
                 onCursorMoved?(currentScreenPos)
             } else if currentAperture >= pinchReleaseAperture {
                 actionSink.mouseUp(at: currentScreenPos)
                 arbiter.commitAction(gesture: .airCursor, action: "cursor_drag", now: now)
                 arbiter.release(intent: .airCursor)
+                lastClickTimestamp = 0.0
 
                 onAction?("Drag & Drop")
+                state = .pointing
+                lastValidScreenPos = currentScreenPos
+                actionSink.mouseMove(to: currentScreenPos)
+                onCursorMoved?(currentScreenPos)
+            }
+
+        case .rightClicking(let downPos, _):
+            if thumbMiddleAperture >= pinchReleaseAperture {
+                actionSink.rightClick(at: downPos)
+                arbiter.commitAction(gesture: .airCursor, action: "cursor_right_click", now: now)
+                arbiter.release(intent: .airCursor)
+                onAction?("Right Click")
+                state = .pointing
+                lastValidScreenPos = currentScreenPos
+                actionSink.mouseMove(to: currentScreenPos)
+                onCursorMoved?(currentScreenPos)
+            }
+
+        case .scrolling(let lastScrollPos):
+            if lm.isTwoFingers {
+                let deltaX = (currentScreenPos.x - lastScrollPos.x) * scrollGain
+                let deltaY = (currentScreenPos.y - lastScrollPos.y) * scrollGain
+                if abs(deltaX) >= 1.0 || abs(deltaY) >= 1.0 {
+                    actionSink.scrollWheel(deltaX: deltaX, deltaY: deltaY)
+                    state = .scrolling(lastScrollPos: currentScreenPos)
+                }
+            } else {
+                arbiter.commitAction(gesture: .airCursor, action: "cursor_scroll", now: now)
+                onAction?("Scroll")
+                arbiter.release(intent: .airCursor)
                 state = .pointing
                 lastValidScreenPos = currentScreenPos
                 actionSink.mouseMove(to: currentScreenPos)
@@ -249,6 +309,13 @@ final class CursorEngine {
         onCursorMoved?(pos)
     }
 
+    private func commitRightClickDown(at pos: CGPoint, now: TimeInterval) {
+        arbiter.claim(intent: .airCursor)
+        state = .rightClicking(downPos: pos, startTime: now)
+        lastValidScreenPos = pos
+        onCursorMoved?(pos)
+    }
+
     private func handleLostHand() {
         cleanReleaseIfNeeded()
         state = .idle
@@ -257,6 +324,8 @@ final class CursorEngine {
         smoothedAnchorSpeed = 0.0
         currentCutoff = minCutoffLowSpeed
         pointFilter.minCutoff = minCutoffLowSpeed
+        lastClickTimestamp = 0.0
+        lastClickPos = .zero
     }
 
     private func cleanReleaseIfNeeded() {
@@ -266,6 +335,10 @@ final class CursorEngine {
             arbiter.release(intent: .airCursor)
         case .dragging:
             actionSink.mouseUp(at: lastValidScreenPos)
+            arbiter.release(intent: .airCursor)
+        case .rightClicking:
+            arbiter.release(intent: .airCursor)
+        case .scrolling:
             arbiter.release(intent: .airCursor)
         default:
             break

@@ -316,10 +316,43 @@ enum ActionDispatcher {
         }
     }
 
-    /// Click left mouse button (down + up) at screen point
-    static func mouseClick(at point: CGPoint) {
-        mouseDown(at: point)
-        mouseUp(at: point)
+    /// Click left mouse button (down + up) at screen point with click count (1 = single, 2 = double)
+    static func mouseClick(at point: CGPoint, clickCount: Int = 1) {
+        if let downEvent = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
+            downEvent.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+            downEvent.post(tap: .cghidEventTap)
+        }
+        if let upEvent = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+            upEvent.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+            upEvent.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Press right mouse button down at screen point
+    static func rightMouseDown(at point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown, mouseCursorPosition: point, mouseButton: .right) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Release right mouse button at screen point
+    static func rightMouseUp(at point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: point, mouseButton: .right) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Click right mouse button (context menu) at screen point
+    static func rightClick(at point: CGPoint) {
+        rightMouseDown(at: point)
+        rightMouseUp(at: point)
+    }
+
+    /// Scroll wheel event in pixel units
+    static func scrollWheel(deltaX: CGFloat, deltaY: CGFloat) {
+        if let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(deltaY.rounded()), wheel2: Int32(deltaX.rounded()), wheel3: 0) {
+            event.post(tap: .cghidEventTap)
+        }
     }
 
     // MARK: - Application Switcher & Activation

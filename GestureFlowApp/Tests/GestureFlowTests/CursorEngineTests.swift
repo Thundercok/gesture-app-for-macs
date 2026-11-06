@@ -7,27 +7,31 @@ final class CursorEngineTests: XCTestCase {
         middleMCP: CGPoint,
         thumbTip: CGPoint,
         indexTip: CGPoint,
+        middleTip: CGPoint? = nil,
         wrist: CGPoint = CGPoint(x: 0.50, y: 0.85),
         isRaised: Bool = true,
         facingCamera: Double = 0.80,
-        isPinching: Bool = false
+        isPinching: Bool = false,
+        isTwoFingers: Bool = false
     ) -> HandLandmarks {
+        let actualMiddleTip = middleTip ?? CGPoint(x: middleMCP.x, y: middleMCP.y - 0.15)
         var points = Array(repeating: CGPoint.zero, count: 21)
         points[0] = wrist
         points[4] = thumbTip
         points[5] = CGPoint(x: middleMCP.x - 0.05, y: middleMCP.y)
         points[8] = indexTip
         points[9] = middleMCP
+        points[12] = actualMiddleTip
         points[17] = CGPoint(x: middleMCP.x + 0.05, y: middleMCP.y)
 
         return HandLandmarks(
             points: points,
-            fingerCount: 4,
-            isTwoFingers: false,
+            fingerCount: isTwoFingers ? 2 : 4,
+            isTwoFingers: isTwoFingers,
             isCrossedFingers: false,
             isOneFinger: false,
-            isOpenHand: true,
-            isStrictOpenPalm: true,
+            isOpenHand: !isTwoFingers,
+            isStrictOpenPalm: !isTwoFingers,
             isInInteractionRange: true,
             tiltAngleDegrees: 10.0,
             isFist: false,
@@ -35,12 +39,12 @@ final class CursorEngineTests: XCTestCase {
             isPinching: isPinching,
             isFramingCorner: false,
             isThreeFingerPinch: false,
-            thumbMiddleDistance: 0.10,
-            indexMiddleDistance: 0.05,
+            thumbMiddleDistance: hypot(thumbTip.x - actualMiddleTip.x, thumbTip.y - actualMiddleTip.y),
+            indexMiddleDistance: hypot(indexTip.x - actualMiddleTip.x, indexTip.y - actualMiddleTip.y),
             pinchCenter: CGPoint(x: 0.5, y: 0.5),
             twoFingerCenter: CGPoint(x: 0.5, y: 0.5),
             indexTip: indexTip,
-            middleTip: CGPoint(x: middleMCP.x, y: middleMCP.y - 0.15),
+            middleTip: actualMiddleTip,
             thumbTip: thumbTip,
             wrist: wrist,
             isRaisedHand: isRaised,
@@ -259,5 +263,173 @@ final class CursorEngineTests: XCTestCase {
 
         // At high speed, cutoff must open to high-speed glide (>= 2.40 Hz) for lag-free tracking
         XCTAssertGreaterThanOrEqual(engine.currentCutoff, 2.40, "High speed flick should open cutoff to ballistic glide")
+    }
+
+    func testDoubleClickDispatchesClickCountTwo() {
+        let clock = ReplayClock()
+        let sink = RecordingActionSink(clock: clock)
+        let arbiter = IntentArbiter(clock: clock)
+        let engine = CursorEngine(clock: clock, actionSink: sink, arbiter: arbiter, screenSize: CGSize(width: 1000, height: 1000))
+        engine.interactionMargin = 0.0
+
+        // Frame 0: Wake to pointing
+        clock.advance(to: 1.00)
+        let lm0 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.35, y: 0.40),
+            indexTip: CGPoint(x: 0.65, y: 0.40)
+        )
+        engine.process(lm0)
+        XCTAssertEqual(engine.state, .pointing)
+
+        // Click 1: Pinch down
+        clock.advance(to: 1.05)
+        let lm1 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.50, y: 0.40),
+            indexTip: CGPoint(x: 0.50, y: 0.40),
+            isPinching: true
+        )
+        engine.process(lm1)
+
+        // Click 1: Release pinch (commit single click)
+        clock.advance(to: 1.10)
+        let lm2 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.35, y: 0.40),
+            indexTip: CGPoint(x: 0.65, y: 0.40),
+            isPinching: false
+        )
+        engine.process(lm2)
+        XCTAssertEqual(arbiter.lastCommittedActionName, "cursor_click")
+
+        // Click 2: Rapid second pinch within doubleClickInterval (1.20 - 1.10 = 0.10s < 0.35s)
+        clock.advance(to: 1.20)
+        let lm3 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.50, y: 0.40),
+            indexTip: CGPoint(x: 0.50, y: 0.40),
+            isPinching: true
+        )
+        engine.process(lm3)
+
+        // Click 2: Release pinch -> Double click triggers!
+        clock.advance(to: 1.25)
+        let lm4 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.35, y: 0.40),
+            indexTip: CGPoint(x: 0.65, y: 0.40),
+            isPinching: false
+        )
+        engine.process(lm4)
+
+        XCTAssertEqual(arbiter.lastCommittedActionName, "cursor_double_click")
+        XCTAssertTrue(sink.actions.contains { $0.starts(with: "mouse_double_click_") })
+    }
+
+    func testRightClickDispatchesOnMiddleThumbPinch() {
+        let clock = ReplayClock()
+        let sink = RecordingActionSink(clock: clock)
+        let arbiter = IntentArbiter(clock: clock)
+        let engine = CursorEngine(clock: clock, actionSink: sink, arbiter: arbiter, screenSize: CGSize(width: 1000, height: 1000))
+        engine.interactionMargin = 0.0
+
+        // Frame 0: Pointing with open hand
+        clock.advance(to: 1.00)
+        let lm0 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.35, y: 0.40),
+            indexTip: CGPoint(x: 0.65, y: 0.40),
+            middleTip: CGPoint(x: 0.50, y: 0.30)
+        )
+        engine.process(lm0)
+        XCTAssertEqual(engine.state, .pointing)
+
+        // Frame 1: Thumb touches middle finger (middle-thumb pinch), index finger stays extended
+        clock.advance(to: 1.05)
+        let lm1 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.50, y: 0.32),
+            indexTip: CGPoint(x: 0.65, y: 0.40), // far from thumb (currentAperture ~ 0.45 > 0.28)
+            middleTip: CGPoint(x: 0.50, y: 0.32)  // touching thumb (thumbMiddleAperture = 0.0 < 0.22)
+        )
+        engine.process(lm1)
+        guard case .rightClicking = engine.state else {
+            XCTFail("Expected .rightClicking, got \(engine.state)")
+            return
+        }
+
+        // Frame 2: Release middle-thumb pinch
+        clock.advance(to: 1.10)
+        let lm2 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.35, y: 0.40),
+            indexTip: CGPoint(x: 0.65, y: 0.40),
+            middleTip: CGPoint(x: 0.50, y: 0.30)
+        )
+        engine.process(lm2)
+
+        XCTAssertEqual(engine.state, .pointing)
+        XCTAssertEqual(arbiter.lastCommittedActionName, "cursor_right_click")
+        XCTAssertTrue(sink.actions.contains { $0.starts(with: "right_click_") })
+    }
+
+    func testInCursorTwoFingerScrollDispatchesScrollWheel() {
+        let clock = ReplayClock()
+        let sink = RecordingActionSink(clock: clock)
+        let arbiter = IntentArbiter(clock: clock)
+        let engine = CursorEngine(clock: clock, actionSink: sink, arbiter: arbiter, screenSize: CGSize(width: 1000, height: 1000))
+        engine.interactionMargin = 0.0
+
+        // Frame 0: Pointing
+        clock.advance(to: 1.00)
+        let lm0 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.35, y: 0.40),
+            indexTip: CGPoint(x: 0.65, y: 0.40)
+        )
+        engine.process(lm0)
+        XCTAssertEqual(engine.state, .pointing)
+
+        // Frame 1: Two fingers posture entered at Y = 0.50
+        clock.advance(to: 1.05)
+        let lm1 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.50),
+            thumbTip: CGPoint(x: 0.35, y: 0.40),
+            indexTip: CGPoint(x: 0.48, y: 0.35),
+            middleTip: CGPoint(x: 0.52, y: 0.35),
+            isTwoFingers: true
+        )
+        engine.process(lm1)
+        guard case .scrolling = engine.state else {
+            XCTFail("Expected .scrolling, got \(engine.state)")
+            return
+        }
+
+        // Frame 2: Hand moves vertically downwards (Y = 0.50 -> 0.55), generating deltaY displacement
+        clock.advance(to: 1.10)
+        let lm2 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.55),
+            thumbTip: CGPoint(x: 0.35, y: 0.45),
+            indexTip: CGPoint(x: 0.48, y: 0.40),
+            middleTip: CGPoint(x: 0.52, y: 0.40),
+            isTwoFingers: true
+        )
+        engine.process(lm2)
+
+        XCTAssertTrue(sink.actions.contains { $0.starts(with: "scroll_wheel_") })
+
+        // Frame 3: Return to open palm (ends two-finger scroll)
+        clock.advance(to: 1.15)
+        let lm3 = makeLandmarks(
+            middleMCP: CGPoint(x: 0.50, y: 0.55),
+            thumbTip: CGPoint(x: 0.35, y: 0.45),
+            indexTip: CGPoint(x: 0.65, y: 0.45),
+            isTwoFingers: false
+        )
+        engine.process(lm3)
+
+        XCTAssertEqual(engine.state, .pointing)
+        XCTAssertEqual(arbiter.lastCommittedActionName, "cursor_scroll")
     }
 }

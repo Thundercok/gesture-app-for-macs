@@ -22,7 +22,18 @@ protocol ActionSink: AnyObject {
     func mouseDragged(to point: CGPoint)
     func mouseUp(at point: CGPoint)
     func mouseClick(at point: CGPoint)
+    func mouseClick(at point: CGPoint, clickCount: Int)
+    func rightMouseDown(at point: CGPoint)
+    func rightMouseUp(at point: CGPoint)
+    func rightClick(at point: CGPoint)
+    func scrollWheel(deltaX: CGFloat, deltaY: CGFloat)
     func magnifyContinuous(delta: CGFloat)
+}
+
+extension ActionSink {
+    func mouseClick(at point: CGPoint) {
+        mouseClick(at: point, clickCount: 1)
+    }
 }
 
 
@@ -103,7 +114,27 @@ final class LiveActionSink: ActionSink {
     }
 
     func mouseClick(at point: CGPoint) {
-        ActionDispatcher.mouseClick(at: point)
+        ActionDispatcher.mouseClick(at: point, clickCount: 1)
+    }
+
+    func mouseClick(at point: CGPoint, clickCount: Int) {
+        ActionDispatcher.mouseClick(at: point, clickCount: clickCount)
+    }
+
+    func rightMouseDown(at point: CGPoint) {
+        ActionDispatcher.rightMouseDown(at: point)
+    }
+
+    func rightMouseUp(at point: CGPoint) {
+        ActionDispatcher.rightMouseUp(at: point)
+    }
+
+    func rightClick(at point: CGPoint) {
+        ActionDispatcher.rightClick(at: point)
+    }
+
+    func scrollWheel(deltaX: CGFloat, deltaY: CGFloat) {
+        ActionDispatcher.scrollWheel(deltaX: deltaX, deltaY: deltaY)
     }
 
     func magnifyContinuous(delta: CGFloat) {
@@ -213,7 +244,31 @@ final class RecordingActionSink: ActionSink {
     }
 
     func mouseClick(at point: CGPoint) {
-        record("mouse_click_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+        mouseClick(at: point, clickCount: 1)
+    }
+
+    func mouseClick(at point: CGPoint, clickCount: Int) {
+        if clickCount > 1 {
+            record("mouse_double_click_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+        } else {
+            record("mouse_click_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+        }
+    }
+
+    func rightMouseDown(at point: CGPoint) {
+        record("right_mouse_down_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+    }
+
+    func rightMouseUp(at point: CGPoint) {
+        record("right_mouse_up_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+    }
+
+    func rightClick(at point: CGPoint) {
+        record("right_click_\(Int(point.x.rounded()))_\(Int(point.y.rounded()))")
+    }
+
+    func scrollWheel(deltaX: CGFloat, deltaY: CGFloat) {
+        record(String(format: "scroll_wheel_dx_%.1f_dy_%.1f", deltaX, deltaY))
     }
 
     func magnifyContinuous(delta: CGFloat) {
