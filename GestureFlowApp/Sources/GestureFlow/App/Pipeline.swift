@@ -6,6 +6,15 @@ extension AppDelegate {
             self?.appState.setAction(actionTitle)
         }
 
+        cursorEngine.onAction = { [weak self] actionTitle in
+            self?.appState.setAction(actionTitle)
+        }
+
+        cursorEngine.onRejectReason = { [weak self] reason in
+            self?.appState.setRejectReason(reason)
+        }
+
+
         scrollEngine.onScrollStatus = { [weak self] isScrolling, clutch, velocityY in
             DispatchQueue.main.async {
                 self?.appState.isAirScrollActive = isScrolling
@@ -131,6 +140,7 @@ extension AppDelegate {
             let activeMode = self.appState.currentModeBox.mode
             if activeMode == .airScroll {
                 self.engine.forceDischarge()
+                self.cursorEngine.forceDischarge()
                 if secondaryLandmarks != nil {
                     self.scrollEngine.forceDischarge()
                 } else {
@@ -138,11 +148,18 @@ extension AppDelegate {
                 }
             } else if activeMode == .macNavigation {
                 self.scrollEngine.forceDischarge()
+                self.cursorEngine.forceDischarge()
                 self.engine.process(landmarks)
+            } else if activeMode == .airCursor {
+                self.scrollEngine.forceDischarge()
+                self.engine.forceDischarge()
+                self.cursorEngine.process(landmarks)
             } else if activeMode == .spatialZoom {
                 self.scrollEngine.forceDischarge()
                 self.engine.forceDischarge()
+                self.cursorEngine.forceDischarge()
             }
+
 
             // Bimanual Spatial Zoom Engine (Active in Spatial Zoom Mode)
             var bimanualSpan: CGFloat = 0.0

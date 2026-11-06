@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let tracker = HandTracker()
     let engine = GestureEngine()
     let scrollEngine = ScrollEngine()
+    let cursorEngine = CursorEngine()
+
 
     var frameCount = 0
     var lastRecordedCommitSequence = 0

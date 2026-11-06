@@ -7,8 +7,10 @@ enum GestureIntent: String, Equatable, CaseIterable {
     case swipe = "swipe"
     case airScroll = "air_scroll"
     case spatialZoom = "spatial_zoom"
+    case airCursor = "air_cursor"
     case cooldown = "cooldown"
 }
+
 
 /// Unified Intent Arbiter: Prevents cross-gesture interference and race conditions
 /// Guarantees that at any instant, exactly one gesture domain owns interaction.

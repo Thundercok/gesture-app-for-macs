@@ -28,6 +28,7 @@ enum SystemMode: String, CaseIterable, Identifiable {
     case airScroll = "AIR_SCROLL"
     case macNavigation = "MAC_NAVIGATION"
     case spatialZoom = "SPATIAL_ZOOM"
+    case airCursor = "AIR_CURSOR"
 
     var id: String { rawValue }
 
@@ -36,6 +37,7 @@ enum SystemMode: String, CaseIterable, Identifiable {
         case .airScroll: return "Air Scroll"
         case .macNavigation: return "Mac Navigation"
         case .spatialZoom: return "Spatial Zoom"
+        case .airCursor: return "Air Cursor"
         }
     }
 
@@ -44,6 +46,7 @@ enum SystemMode: String, CaseIterable, Identifiable {
         case .airScroll: return "arrow.up.and.down.circle.fill"
         case .macNavigation: return "macwindow.on.rectangle"
         case .spatialZoom: return "plus.magnifyingglass"
+        case .airCursor: return "cursorarrow.rays"
         }
     }
 
@@ -52,6 +55,7 @@ enum SystemMode: String, CaseIterable, Identifiable {
         case .airScroll: return "SCROLL"
         case .macNavigation: return "NAV"
         case .spatialZoom: return "ZOOM"
+        case .airCursor: return "CURSOR"
         }
     }
 
@@ -60,6 +64,7 @@ enum SystemMode: String, CaseIterable, Identifiable {
         case .airScroll: return "Hất tay để lướt như điện thoại"
         case .macNavigation: return "Vuốt ngang chuyển App • Vuốt lên Mission Control"
         case .spatialZoom: return "Đưa 2 tay ra xa / lại gần để thu phóng"
+        case .airCursor: return "Di chuyển chuột bằng tay • Chụm ngón để click"
         }
     }
 
@@ -67,10 +72,12 @@ enum SystemMode: String, CaseIterable, Identifiable {
         switch self {
         case .airScroll: return .macNavigation
         case .macNavigation: return .spatialZoom
-        case .spatialZoom: return .airScroll
+        case .spatialZoom: return .airCursor
+        case .airCursor: return .airScroll
         }
     }
 }
+
 
 final class CurrentModeBox: @unchecked Sendable {
     private let lock = NSLock()

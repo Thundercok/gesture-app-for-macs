@@ -105,6 +105,11 @@ extension AppDelegate {
         zoomItem.target = self
         systemModeMenu.addItem(zoomItem)
 
+        let cursorItem = NSMenuItem(title: "4. Air Cursor (Di chuyển chuột, chụm để click)", action: #selector(setModeAirCursor), keyEquivalent: "4")
+        cursorItem.target = self
+        systemModeMenu.addItem(cursorItem)
+
+
         let systemModeParent = NSMenuItem(title: "Chế độ hoạt động (System Mode)", action: nil, keyEquivalent: "")
         systemModeParent.submenu = systemModeMenu
         menu.addItem(systemModeParent)
@@ -249,7 +254,17 @@ extension AppDelegate {
         appState.setMode(.spatialZoom)
         engine.forceDischarge()
         scrollEngine.forceDischarge()
+        cursorEngine.forceDischarge()
     }
+
+    @objc func setModeAirCursor() {
+        IntentArbiter.shared.forceReset()
+        appState.setMode(.airCursor)
+        engine.forceDischarge()
+        scrollEngine.forceDischarge()
+        cursorEngine.forceDischarge()
+    }
+
 
     @objc func setModeMinimal() {
         appState.displayMode = .minimal

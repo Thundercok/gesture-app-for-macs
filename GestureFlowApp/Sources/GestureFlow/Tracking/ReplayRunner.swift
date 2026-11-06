@@ -90,12 +90,15 @@ final class ReplayRunner {
         let arbiter = IntentArbiter(clock: clock)
         let gestureEngine = GestureEngine(clock: clock, actionSink: actionSink, arbiter: arbiter)
         let scrollEngine = ScrollEngine(clock: clock, actionSink: actionSink, arbiter: arbiter)
+        let cursorEngine = CursorEngine(clock: clock, actionSink: actionSink, arbiter: arbiter)
         let primaryChannel = HandFeatureExtractor.Channel()
         let secondaryChannel = HandFeatureExtractor.Channel()
 
         let runMode = modeOption?.lowercased() ?? "all"
         let enableNav = (runMode == "all" || runMode == "nav" || runMode == "macnavigation")
         let enableScroll = (runMode == "all" || runMode == "scroll" || runMode == "airscroll")
+        let enableCursor = (runMode == "cursor" || runMode == "aircursor")
+
 
         var lastCommitSeq = 0
         var totalFrames = 0
@@ -186,6 +189,10 @@ final class ReplayRunner {
                     scrollEngine.process(primaryLandmarks)
                 }
             }
+            if enableCursor {
+                cursorEngine.process(primaryLandmarks)
+            }
+
 
             // Check if any action fired
             let seq = arbiter.commitSequence
