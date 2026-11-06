@@ -45,6 +45,9 @@ This section records the complete hands-free master plan executed directly on `m
 | **WP29 — CoreGraphics Mouse & Magnify Actions** | DONE | `df81691` | Extended `ActionSink` protocol with `mouseMove`, `mouseDown`, `mouseDragged`, `mouseUp`, `mouseClick`, and `magnifyContinuous`. Added `ActionSinkTests.swift`. |
 | **WP30 — CursorEngine & Mode 4** | DONE | `efd3560` | Implemented `CursorEngine.swift` with Pre-Click Anchor Locking and Middle MCP pointing. Added `SystemMode.airCursor` (`⌘4`). Added `CursorEngineTests.swift` (4 tests). |
 | **WP31 — Synthetic Cursor Scenarios & Goldens** | DONE | `6b78fe5` | Added synthetic cursor click and drag fixtures in `tools/make_synthetic_fixtures.py`, locked golden references in `tools/golden/`, and added `test_cursor_replay_and_golden_determinism` in `tools/test_replay.py`. |
+| **WP32 — Nonlinear Adaptive Viscous Damping Field** | DONE | `9b3685d` | Implemented velocity-dependent quadratic viscous damping field $\mu(v)$ in `CursorEngine.swift` (0.40 Hz honey at low speed, 2.50 Hz glide at high speed) solving Fatal Trap 1. Added `CursorEngineTests.swift` test. |
+| **WP33 — Synthetic CoreML Posture Model & Bundling** | DONE | *(staged)* | Unblocked WP7 CoreML gate hands-free. Built `tools/generate_synthetic_postures.py` (6 sessions), exported 1500 samples via Swift pipeline, trained MLP (1.00 F1 on held-out test), exported CoreML model into `GestureFlowApp/Resources/PostureClassifier.mlmodel`, calibrated hysteresis, added `tools/test_generate_synthetic_postures.py` and `PostureClassifierTests.swift`. |
+
 
 
 

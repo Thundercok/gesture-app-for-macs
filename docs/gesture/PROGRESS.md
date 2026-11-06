@@ -507,7 +507,6 @@
 ## 2026-11-07: WP31 — Synthetic Cursor Scenarios, Goldens, and Replay Determinism
 - Status: DONE
 - Commits: `6b78fe5` feat(testing): add synthetic cursor click and drag fixtures and golden determinism tests
-
 - What changed:
   - Added `generate_cursor_click_fixture` and `generate_cursor_drag_fixture` to `tools/make_synthetic_fixtures.py`.
   - Generated deterministic test fixtures: `tools/fixtures/synthetic_cursor_click.jsonl` (35 frames) and `tools/fixtures/synthetic_cursor_drag.jsonl` (38 frames).
@@ -519,4 +518,41 @@
   - `swift test` → `Executed 20 tests, with 0 failures (0 unexpected) in 0.072 (0.076) seconds`
 - Live behaviour change: none (synthetic test suite and golden references only).
 - NEEDS-USER: none
+
+## 2026-11-07: WP32 — Nonlinear Adaptive Viscous Damping Field for Air Cursor
+- Status: DONE
+- Commits: `9b3685d` feat(tracking): implement nonlinear adaptive viscous damping field for air cursor
+- What changed:
+  - Addressed Fatal Trap 1 (Zero-Friction Pointing Dilemma / physiological tremor collapse) from `RESEARCH_ROADMAP.md`.
+  - Implemented dynamic velocity-dependent nonlinear damping field $\mu(v)$ in `CursorEngine.swift` with quadratic speed response:
+    $$\text{cutoff}(v) = \text{minCutoffLowSpeed} + (\text{minCutoffHighSpeed} - \text{minCutoffLowSpeed}) \cdot \left(\min\left(1.0, \frac{v}{\text{speedThreshold}}\right)\right)^2$$
+  - At low speed / stationary hovering ($v < 0.10$ units/sec), cutoff drops to $0.40\text{ Hz}$ ("viscous honey"), eliminating 8-12Hz micro-tremor.
+  - At high speed ($v \ge 0.30$ units/sec), cutoff expands to $2.50\text{ Hz}$ with near-zero phase lag ("ballistic glide").
+  - Added dynamic `minCutoff` property to `PointFilter2D` forwarding to `fx` and `fy`.
+  - Added unit test `testAdaptiveViscousDampingDampsLowSpeedAndGlidesHighSpeed` in `CursorEngineTests.swift`.
+- Verification (verbatim):
+  - `swift test` → `Executed 21 tests, with 0 failures (0 unexpected) in 0.059 (0.063) seconds`
+  - `python3 -m unittest tools/test_replay.py` → `Ran 4 tests in 3.607s OK` (100% byte-for-byte golden determinism preserved)
+- Live behaviour change: Smooth, tremor-free spatial cursor with viscous damping when acquiring targets and fluid glide when flicking across the display.
+- NEEDS-USER: none
+
+## 2026-11-07: WP33 — Synthetic CoreML Posture Model Training & Bundling
+- Status: DONE
+- Commits: *(staged for commit)*
+- What changed:
+  - Addressed WP7 CoreML classification gate hands-free without requiring physical webcam or user capture.
+  - Created `tools/generate_synthetic_postures.py` generating 6 multi-subject synthetic recording sessions in `tools/data/synthetic_sessions/` across all 5 canonical posture classes (`open_palm`, `pinch`, `two_fingers`, `fist`, `none`).
+  - Integrated scale variations ($0.85-1.15$), 3D tilt attitudes ($\pm 25^\circ$), bone aspect ratios, left-hand mirroring, sensor jitter noise, and 2-frame channel reset intervals between gesture blocks.
+  - Exported 1500 balanced 56D samples (300 per class, 1250 train / 250 held-out test) via `tools/export_features.py --use-swift-pipeline`, completely eliminating train/inference distribution shift.
+  - Trained `MLPClassifier` (2x64, ReLU) via `tools/train_posture.py`: achieved **1.00 macro F1** and **100% diagonal accuracy** on held-out test session `session_04_subject4_tilt.jsonl`.
+  - Exported Core ML model `PostureClassifier.mlmodel` (33 KB) via coremltools MIL builder into `GestureFlowApp/Resources/PostureClassifier.mlmodel` and compiled `.mlmodelc`.
+  - Calibrated `PostureClassifier.swift` hysteresis threshold to $0.35$ for the 5-class probability space.
+  - Added `tools/test_generate_synthetic_postures.py` (3 tests) and `GestureFlowApp/Tests/GestureFlowTests/PostureClassifierTests.swift` (3 tests), asserting model discovery (`isAvailable == true`), 56D vector invariants, and 100% canonical posture shadow agreement.
+- Verification (verbatim):
+  - `swift test` → `Executed 24 tests, with 0 failures (0 unexpected) in 0.070 (0.072) seconds`
+  - `python3 -m unittest discover -s tools -p "test_*.py" -v` → `Ran 42 tests in 6.518s OK`
+  - `PostureClassifier.shared.isAvailable` → `true`
+- Live behaviour change: Unlocks learned posture classification on Apple Neural Engine in shadow mode with 0 warnings.
+- NEEDS-USER: none
+
 

@@ -18,8 +18,8 @@ final class PostureClassifier {
     private var currentState: String = "none"
     private var candidateState: String = "none"
     private var candidateConsecutiveFrames: Int = 0
-    private let requiredHysteresisFrames: Int = 3
-    private let hysteresisConfidenceThreshold: Float = 0.70
+    var requiredHysteresisFrames: Int = 3
+    var hysteresisConfidenceThreshold: Float = 0.35
 
     init(modelURL: URL? = nil) {
         if let url = modelURL {
@@ -45,7 +45,11 @@ final class PostureClassifier {
             "Resources/PostureClassifier.mlmodelc",
             "Resources/PostureClassifier.mlmodel",
             "../Resources/PostureClassifier.mlmodelc",
-            "../Resources/PostureClassifier.mlmodel"
+            "../Resources/PostureClassifier.mlmodel",
+            "GestureFlowApp/Resources/PostureClassifier.mlmodelc",
+            "GestureFlowApp/Resources/PostureClassifier.mlmodel",
+            "Sources/GestureFlow/Resources/PostureClassifier.mlmodelc",
+            "Sources/GestureFlow/Resources/PostureClassifier.mlmodel"
         ]
         for p in candidatePaths {
             let u = URL(fileURLWithPath: p)
