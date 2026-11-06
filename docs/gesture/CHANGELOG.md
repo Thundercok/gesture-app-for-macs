@@ -44,6 +44,7 @@ This section records the complete hands-free master plan executed directly on `m
 | **WP28 — Kinematic Diagnostics & Unit Tests** | DONE | `9c0c2b5` | Created `tools/plot_kinematics.py` for analyzing Rest Jitter, Ballistic Phase Lag, and Heisenberg Click Deflection. Added `tools/test_plot_kinematics.py` (5 tests). |
 | **WP29 — CoreGraphics Mouse & Magnify Actions** | DONE | `df81691` | Extended `ActionSink` protocol with `mouseMove`, `mouseDown`, `mouseDragged`, `mouseUp`, `mouseClick`, and `magnifyContinuous`. Added `ActionSinkTests.swift`. |
 | **WP30 — CursorEngine & Mode 4** | DONE | `efd3560` | Implemented `CursorEngine.swift` with Pre-Click Anchor Locking and Middle MCP pointing. Added `SystemMode.airCursor` (`⌘4`). Added `CursorEngineTests.swift` (4 tests). |
-| **WP31 — Synthetic Cursor Scenarios & Goldens** | DONE | `pending` | Added synthetic cursor click and drag fixtures in `tools/make_synthetic_fixtures.py`, locked golden references in `tools/golden/`, and added `test_cursor_replay_and_golden_determinism` in `tools/test_replay.py`. |
+| **WP31 — Synthetic Cursor Scenarios & Goldens** | DONE | `6b78fe5` | Added synthetic cursor click and drag fixtures in `tools/make_synthetic_fixtures.py`, locked golden references in `tools/golden/`, and added `test_cursor_replay_and_golden_determinism` in `tools/test_replay.py`. |
+
 
 

@@ -506,7 +506,8 @@
 
 ## 2026-11-07: WP31 — Synthetic Cursor Scenarios, Goldens, and Replay Determinism
 - Status: DONE
-- Commits: pending
+- Commits: `6b78fe5` feat(testing): add synthetic cursor click and drag fixtures and golden determinism tests
+
 - What changed:
   - Added `generate_cursor_click_fixture` and `generate_cursor_drag_fixture` to `tools/make_synthetic_fixtures.py`.
   - Generated deterministic test fixtures: `tools/fixtures/synthetic_cursor_click.jsonl` (35 frames) and `tools/fixtures/synthetic_cursor_drag.jsonl` (38 frames).
