@@ -557,7 +557,7 @@
 
 ## 2026-11-07: WP34 — Multi-Action Spatial Mouse Manipulation
 - Status: DONE
-- Commits: *(staged for commit)*
+- Commits: `e5bf044` feat(cursor): implement multi-action spatial mouse (double-click, right-click, scroll wheel)
 - What changed:
   - Addressed Module 1 full multi-action desktop mouse fidelity in `CursorEngine.swift`, `ActionDispatcher.swift`, and `ActionSink.swift`:
     1. **Double-Click**: Fast dual-pinch sequences within `doubleClickInterval = 0.35s` and `doubleClickDistanceThreshold = 25.0px` dispatch native Quartz double-clicks (`clickCount = 2`) via `actionSink.mouseClick(at: downPos, clickCount: 2)` and commit `cursor_double_click`.
