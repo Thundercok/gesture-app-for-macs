@@ -93,6 +93,14 @@ final class PointFilter2D {
         return CGPoint(x: x, y: y)
     }
 
+    var minCutoff: Double {
+        get { fx.minCutoff }
+        set {
+            fx.minCutoff = newValue
+            fy.minCutoff = newValue
+        }
+    }
+
     init(minCutoff: Double = 1.0, beta: Double = 0.025, dCutoff: Double = 1.0, noiseGateThreshold: CGFloat = 0.0) {
         self.fx = OneEuroFilter(minCutoff: minCutoff, beta: beta, dCutoff: dCutoff)
         self.fy = OneEuroFilter(minCutoff: minCutoff, beta: beta, dCutoff: dCutoff)

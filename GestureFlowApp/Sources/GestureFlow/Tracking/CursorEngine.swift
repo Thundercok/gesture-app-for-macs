@@ -26,8 +26,16 @@ final class CursorEngine {
     var screenSize: CGSize = CGSize(width: 1440, height: 900)
     var interactionMargin: CGFloat = 0.12 // 12% padding around camera frame for edge reachability
 
-    // Kinematic Filtering
-    private let pointFilter = PointFilter2D(minCutoff: 1.15, beta: 0.035, noiseGateThreshold: 0.0008)
+    // Kinematic Filtering & Adaptive Viscous Damping Field
+    // Low speed -> viscous damping (0.40 Hz) absorbs 8-12Hz physiological tremor ("viscous honey").
+    // High speed -> ballistic glide (2.50 Hz) provides zero-lag rapid tracking.
+    var minCutoffLowSpeed: Double = 0.40
+    var minCutoffHighSpeed: Double = 2.50
+    var speedThreshold: Double = 0.30 // Normalized coordinate velocity threshold (units/sec)
+    private(set) var currentCutoff: Double = 0.40
+    private var previousRawAnchor: CGPoint?
+    private var smoothedAnchorSpeed: Double = 0.0
+    private let pointFilter = PointFilter2D(minCutoff: 0.40, beta: 0.035, noiseGateThreshold: 0.0008)
 
     // State Tracking
     private(set) var state: CursorState = .idle
@@ -68,6 +76,10 @@ final class CursorEngine {
         cleanReleaseIfNeeded()
         state = .idle
         pointFilter.reset()
+        previousRawAnchor = nil
+        smoothedAnchorSpeed = 0.0
+        currentCutoff = minCutoffLowSpeed
+        pointFilter.minCutoff = minCutoffLowSpeed
     }
 
     func process(_ landmarks: HandLandmarks?) {
@@ -108,6 +120,23 @@ final class CursorEngine {
 
         // 3. Compute Pointing Coordinate (Middle MCP preferred for physiological tremor damping)
         let anchor = lm.points.count >= 21 ? lm.points[9] : lm.handCentroid
+
+        // Adaptive Viscous Damping Field:
+        // Dynamic cutoff based on anchor velocity v = Δpos / Δt
+        if let prev = previousRawAnchor {
+            let dist = hypot(anchor.x - prev.x, anchor.y - prev.y)
+            let instSpeed = Double(dist) / dt
+            smoothedAnchorSpeed = (smoothedAnchorSpeed == 0.0) ? instSpeed : (0.35 * instSpeed + 0.65 * smoothedAnchorSpeed)
+            let linearRatio = min(1.0, max(0.0, smoothedAnchorSpeed / speedThreshold))
+            let speedRatio = linearRatio * linearRatio // Quadratic nonlinear viscous damping field
+            currentCutoff = minCutoffLowSpeed + (minCutoffHighSpeed - minCutoffLowSpeed) * speedRatio
+            pointFilter.minCutoff = currentCutoff
+        } else {
+            currentCutoff = minCutoffLowSpeed
+            pointFilter.minCutoff = minCutoffLowSpeed
+        }
+        previousRawAnchor = anchor
+
         let smoothedAnchor = pointFilter.filter(anchor, timestamp: now)
 
         // Map normalized camera coordinates to display space with edge margin expansion
@@ -224,6 +253,10 @@ final class CursorEngine {
         cleanReleaseIfNeeded()
         state = .idle
         pointFilter.reset()
+        previousRawAnchor = nil
+        smoothedAnchorSpeed = 0.0
+        currentCutoff = minCutoffLowSpeed
+        pointFilter.minCutoff = minCutoffLowSpeed
     }
 
     private func cleanReleaseIfNeeded() {

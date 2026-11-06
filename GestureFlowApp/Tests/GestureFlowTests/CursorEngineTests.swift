@@ -218,4 +218,46 @@ final class CursorEngineTests: XCTestCase {
         engine.process(lm)
         XCTAssertEqual(engine.state, .idle)
     }
+
+    func testAdaptiveViscousDampingDampsLowSpeedAndGlidesHighSpeed() {
+        let clock = ReplayClock()
+        let sink = RecordingActionSink(clock: clock)
+        let arbiter = IntentArbiter(clock: clock)
+        let engine = CursorEngine(clock: clock, actionSink: sink, arbiter: arbiter)
+
+        var t = 1.00
+        // Phase 1: Stationary / micro-tremor frames at 60 FPS (dt = 0.016)
+        // Hand moves by at most 0.0005 (micro-tremor), speed <= 0.04 units/sec
+        for i in 0..<15 {
+            clock.advance(to: t)
+            let jitter = (i % 2 == 0) ? 0.0005 : -0.0005
+            let lm = makeLandmarks(
+                middleMCP: CGPoint(x: 0.50 + jitter, y: 0.50),
+                thumbTip: CGPoint(x: 0.40, y: 0.40),
+                indexTip: CGPoint(x: 0.50, y: 0.40)
+            )
+            engine.process(lm)
+            t += 0.016
+        }
+
+        // At low speed, cutoff must drop near low-speed floor (<= 0.65 Hz) for heavy tremor absorption
+        XCTAssertLessThanOrEqual(engine.currentCutoff, 0.65, "Low speed pointing should drop cutoff into viscous damping field")
+
+        // Phase 2: Rapid ballistic flick (hand travels 0.05 units per frame -> speed ~ 3.1 units/sec >> 0.30)
+        var posX = 0.50
+        for _ in 0..<10 {
+            clock.advance(to: t)
+            posX += 0.05
+            let lm = makeLandmarks(
+                middleMCP: CGPoint(x: posX, y: 0.50),
+                thumbTip: CGPoint(x: posX - 0.10, y: 0.40),
+                indexTip: CGPoint(x: posX, y: 0.40)
+            )
+            engine.process(lm)
+            t += 0.016
+        }
+
+        // At high speed, cutoff must open to high-speed glide (>= 2.40 Hz) for lag-free tracking
+        XCTAssertGreaterThanOrEqual(engine.currentCutoff, 2.40, "High speed flick should open cutoff to ballistic glide")
+    }
 }
