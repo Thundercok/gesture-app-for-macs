@@ -594,7 +594,7 @@
 
 ## 2026-11-07: WP36 — ISO 9241-9 Fitts' Law Scientific Benchmark Harness
 - Status: DONE
-- Commits: *(staged for commit)*
+- Commits: `40eb4e8` feat(bench): implement ISO 9241-9 Fitts' Law scientific benchmark harness
 - What changed:
   - Addressed Evaluation & Empirical Verification milestone from `RESEARCH_ROADMAP.md`.
   - Implemented `tools/bench_fitts.py`:
