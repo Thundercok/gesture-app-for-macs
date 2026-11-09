@@ -57,6 +57,7 @@ final class CursorEngine {
     var scrollGain: CGFloat = 1.0
 
     public let snappingEngine = MagneticSnappingEngine()
+    let intentClassifier = IntentClassifier.shared
 
     private var lastClickTimestamp: TimeInterval = 0.0
     private var lastClickPos: CGPoint = .zero
@@ -90,6 +91,7 @@ final class CursorEngine {
         smoothedAnchorSpeed = 0.0
         currentCutoff = minCutoffLowSpeed
         pointFilter.minCutoff = minCutoffLowSpeed
+        intentClassifier.reset()
         lastClickTimestamp = 0.0
         lastClickPos = .zero
     }
@@ -175,6 +177,9 @@ final class CursorEngine {
         let isPinchDetected = lm.isPinching || (currentAperture < pinchCommitAperture)
         let isMiddlePinchDetected = (thumbMiddleAperture < pinchCommitAperture) && (thumbMiddleAperture < currentAperture - 0.08) && (currentAperture > pinchReleaseAperture)
 
+        // Evaluate temporal causal intent sequence
+        let intentPred = intentClassifier.process(landmarks: lm)
+
         // 5. State Machine Transition Logic
         switch state {
         case .idle:
@@ -193,8 +198,8 @@ final class CursorEngine {
                 // Two fingers extended -> Enter In-Cursor Scroll Wheel
                 arbiter.claim(intent: .airCursor)
                 state = .scrolling(lastScrollPos: currentScreenPos)
-            } else if currentAperture <= preClickApertureThreshold && apertureVelocity <= preClickVelocityThreshold {
-                // Fingers rapidly clamping toward left pinch: freeze cursor coordinate
+            } else if (currentAperture <= preClickApertureThreshold && apertureVelocity <= preClickVelocityThreshold) || (intentPred.isPreClickAnticipated && currentAperture <= 0.60) {
+                // Fingers rapidly clamping toward left pinch (kinematic or neural anticipation): freeze cursor coordinate
                 state = .preClickLocked(anchorPos: currentScreenPos, lockUntil: now + preClickLockDuration)
                 lastValidScreenPos = currentScreenPos
             } else if isMiddlePinchDetected {
@@ -328,6 +333,7 @@ final class CursorEngine {
         smoothedAnchorSpeed = 0.0
         currentCutoff = minCutoffLowSpeed
         pointFilter.minCutoff = minCutoffLowSpeed
+        intentClassifier.reset()
         lastClickTimestamp = 0.0
         lastClickPos = .zero
     }
