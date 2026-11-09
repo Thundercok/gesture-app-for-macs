@@ -238,7 +238,9 @@ extension AppDelegate {
                     secondary: secondaryLandmarks,
                     predictedIntent: IntentArbiter.shared.currentIntent.rawValue,
                     firedIntent: fired,
-                    firedAction: firedAction
+                    firedAction: firedAction,
+                    shadowPosture: shadowPosture,
+                    shadowAgrees: shadowAgrees
                 )
             }
 

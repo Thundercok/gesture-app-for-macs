@@ -1,47 +1,63 @@
 import Foundation
 import CoreGraphics
 
-struct LandmarkPointRecord: Codable, Equatable {
-    let x: Double
-    let y: Double
-}
+public struct LandmarkPointRecord: Codable, Equatable {
+    public let x: Double
+    public let y: Double
 
-struct FaceBBoxRecord: Codable, Equatable {
-    let x: Double
-    let y: Double
-    let width: Double
-    let height: Double
-
-    var cgRect: CGRect {
-        CGRect(x: x, y: y, width: width, height: height)
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
     }
 }
 
-struct HandFrameRecord: Codable {
-    let timestamp: Double
-    let frameIndex: Int
-    let groundTruth: String
-    let predictedIntent: String
+public struct FaceBBoxRecord: Codable, Equatable {
+    public let x: Double
+    public let y: Double
+    public let width: Double
+    public let height: Double
+
+    public var cgRect: CGRect {
+        CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct HandFrameRecord: Codable {
+    public let timestamp: Double
+    public let frameIndex: Int
+    public let groundTruth: String
+    public let predictedIntent: String
     /// Non-empty only on the frame where an action was actually committed (event, not state).
-    let firedIntent: String
+    public let firedIntent: String
     /// Concrete action name including direction (e.g. "swipe_left", "scroll_down").
-    let firedAction: String
-    let handDetected: Bool
-    let fingerCount: Int
-    let isPinching: Bool
-    let isTwoFingers: Bool
-    let isRaisedHand: Bool
-    let estimatedDepth: Double
-    let facingCamera: Double
-    let primaryPoints: [LandmarkPointRecord]
-    let secondaryPoints: [LandmarkPointRecord]?
-    let confidence: [Float]?
-    let faceBBox: FaceBBoxRecord?
-    let isInInteractionRange: Bool?
-    let handCentroid: LandmarkPointRecord?
-    let tiltAngleDegrees: Double?
-    let shadowPosture: String?
-    let shadowAgrees: Bool?
+    public let firedAction: String
+    public let handDetected: Bool
+    public let fingerCount: Int
+    public let isPinching: Bool
+    public let isTwoFingers: Bool
+    public let isRaisedHand: Bool
+    public let estimatedDepth: Double
+    public let facingCamera: Double
+    public let primaryPoints: [LandmarkPointRecord]
+    public let secondaryPoints: [LandmarkPointRecord]?
+    public let confidence: [Float]?
+    public let faceBBox: FaceBBoxRecord?
+    public let isInInteractionRange: Bool?
+    public let handCentroid: LandmarkPointRecord?
+    public let tiltAngleDegrees: Double?
+    public let shadowPosture: String?
+    public let shadowAgrees: Bool?
+    /// Optional context metadata for Experiment 001 (Context-Aware Intent Inference)
+    public let desktopContext: DesktopContextRecord?
+    /// High-level research intent class (IDLE, SCROLL, WINDOW_MANIPULATE, WORKSPACE_NAVIGATE, SELECT, OTHER)
+    public let researchIntent: String?
 
     enum CodingKeys: String, CodingKey {
         case timestamp, frameIndex, groundTruth, predictedIntent, firedIntent, firedAction
@@ -49,9 +65,13 @@ struct HandFrameRecord: Codable {
         case estimatedDepth, facingCamera, primaryPoints, secondaryPoints
         case confidence, confidences, faceBBox, isInInteractionRange, handCentroid, tiltAngleDegrees
         case shadowPosture, shadowAgrees
+        case desktopContext = "desktop_context"
+        case desktopContextAlt = "desktopContext"
+        case researchIntent = "research_intent"
+        case researchIntentAlt = "researchIntent"
     }
 
-    init(
+    public init(
         timestamp: Double,
         frameIndex: Int,
         groundTruth: String,
@@ -73,7 +93,9 @@ struct HandFrameRecord: Codable {
         handCentroid: LandmarkPointRecord? = nil,
         tiltAngleDegrees: Double? = nil,
         shadowPosture: String? = nil,
-        shadowAgrees: Bool? = nil
+        shadowAgrees: Bool? = nil,
+        desktopContext: DesktopContextRecord? = nil,
+        researchIntent: String? = nil
     ) {
         self.timestamp = timestamp
         self.frameIndex = frameIndex
@@ -97,9 +119,11 @@ struct HandFrameRecord: Codable {
         self.tiltAngleDegrees = tiltAngleDegrees
         self.shadowPosture = shadowPosture
         self.shadowAgrees = shadowAgrees
+        self.desktopContext = desktopContext
+        self.researchIntent = researchIntent
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         timestamp = try container.decode(Double.self, forKey: .timestamp)
         frameIndex = try container.decode(Int.self, forKey: .frameIndex)
@@ -146,9 +170,27 @@ struct HandFrameRecord: Codable {
         tiltAngleDegrees = try? container.decodeIfPresent(Double.self, forKey: .tiltAngleDegrees)
         shadowPosture = try? container.decodeIfPresent(String.self, forKey: .shadowPosture)
         shadowAgrees = try? container.decodeIfPresent(Bool.self, forKey: .shadowAgrees)
+
+        // Desktop Context: supports snake_case (desktop_context) or camelCase (desktopContext)
+        if let ctx = try? container.decodeIfPresent(DesktopContextRecord.self, forKey: .desktopContext) {
+            desktopContext = ctx
+        } else if let ctxAlt = try? container.decodeIfPresent(DesktopContextRecord.self, forKey: .desktopContextAlt) {
+            desktopContext = ctxAlt
+        } else {
+            desktopContext = nil
+        }
+
+        // Research Intent: supports snake_case (research_intent) or camelCase (researchIntent)
+        if let ri = try? container.decodeIfPresent(String.self, forKey: .researchIntent) {
+            researchIntent = ri
+        } else if let riAlt = try? container.decodeIfPresent(String.self, forKey: .researchIntentAlt) {
+            researchIntent = riAlt
+        } else {
+            researchIntent = nil
+        }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(timestamp, forKey: .timestamp)
         try container.encode(frameIndex, forKey: .frameIndex)
@@ -172,6 +214,8 @@ struct HandFrameRecord: Codable {
         try container.encodeIfPresent(tiltAngleDegrees, forKey: .tiltAngleDegrees)
         try container.encodeIfPresent(shadowPosture, forKey: .shadowPosture)
         try container.encodeIfPresent(shadowAgrees, forKey: .shadowAgrees)
+        try container.encodeIfPresent(desktopContext, forKey: .desktopContext)
+        try container.encodeIfPresent(researchIntent, forKey: .researchIntent)
     }
 }
 
@@ -186,7 +230,9 @@ func makeFrameRecord(
     groundTruth: String,
     confidence: [Float]? = nil,
     shadowPosture: String? = nil,
-    shadowAgrees: Bool? = nil
+    shadowAgrees: Bool? = nil,
+    desktopContext: DesktopContextRecord? = nil,
+    researchIntent: String? = nil
 ) -> HandFrameRecord {
     let pPoints = primary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) } ?? []
     let sPoints = secondary?.points.map { LandmarkPointRecord(x: Double($0.x), y: Double($0.y)) }
@@ -219,23 +265,87 @@ func makeFrameRecord(
         handCentroid: centroidRec,
         tiltAngleDegrees: primary?.tiltAngleDegrees,
         shadowPosture: shadowPosture,
-        shadowAgrees: shadowAgrees
+        shadowAgrees: shadowAgrees,
+        desktopContext: desktopContext,
+        researchIntent: researchIntent
     )
 }
 
-final class DatasetRecorder {
-    static let shared = DatasetRecorder()
+public final class DatasetRecorder {
+    public static let shared = DatasetRecorder()
 
+    private let stateLock = NSLock()
     private var fileHandle: FileHandle?
-    private(set) var isRecording: Bool = false
+    private var _isRecording: Bool = false
+    private var _currentLabel: String = "idle"
+    private var _currentResearchIntent: String? = ResearchIntent.idle.rawValue
+    private var _labelsLocked: Bool = false
+    private var _recordedFrameCount: Int = 0
+    private var _outputPath: String = ""
+
     private let queue = DispatchQueue(label: "com.gestureflow.recorder", qos: .utility)
-    private(set) var currentLabel: String = "idle"
-    private(set) var recordedFrameCount: Int = 0
-    private var outputPath: String = ""
+    private var contextProvider: DesktopContextProviderProtocol = DesktopContextProvider.shared
 
-    private init() {}
+    public var isRecording: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _isRecording
+    }
 
-    func startRecording(toPath path: String) -> Bool {
+    public var currentLabel: String {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _currentLabel
+    }
+
+    public var currentResearchIntent: String? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _currentResearchIntent
+    }
+
+    public var recordedFrameCount: Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _recordedFrameCount
+    }
+
+    /// When true (guided session running) manual hotkeys are ignored so they can't corrupt schedule labels.
+    public var labelsLocked: Bool {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return _labelsLocked
+        }
+        set {
+            stateLock.lock()
+            _labelsLocked = newValue
+            stateLock.unlock()
+        }
+    }
+
+    public init() {}
+
+    public func setContextProvider(_ provider: DesktopContextProviderProtocol) {
+        stateLock.lock()
+        self.contextProvider = provider
+        stateLock.unlock()
+    }
+
+    public func startRecording(toPath path: String) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        // If already recording, stop previous stream safely
+        if _isRecording {
+            _isRecording = false
+            queue.sync {
+                try? fileHandle?.synchronize()
+                try? fileHandle?.close()
+                fileHandle = nil
+            }
+        }
+
         let fileManager = FileManager.default
         let expandedPath = (path as NSString).expandingTildeInPath
         let url = URL(fileURLWithPath: expandedPath)
@@ -251,12 +361,14 @@ final class DatasetRecorder {
         }
 
         do {
-            fileHandle = try FileHandle(forWritingTo: url)
-            fileHandle?.seekToEndOfFile()
-            isRecording = true
-            outputPath = expandedPath
-            recordedFrameCount = 0
-            currentLabel = "idle"
+            let handle = try FileHandle(forWritingTo: url)
+            handle.seekToEndOfFile()
+            self.fileHandle = handle
+            self._isRecording = true
+            self._outputPath = expandedPath
+            self._recordedFrameCount = 0
+            self._currentLabel = "idle"
+            self._currentResearchIntent = ResearchIntent.idle.rawValue
             print("""
             ====================================================================
             [DatasetRecorder] Recording ENABLED: \(expandedPath)
@@ -279,15 +391,21 @@ final class DatasetRecorder {
         }
     }
 
-    func setGroundTruthLabel(_ label: String) {
-        currentLabel = label
-        print("[DatasetRecorder] Ground-Truth Label => [\(label)]")
+    public func setGroundTruthLabel(_ label: String, researchIntent: ResearchIntent? = nil) {
+        stateLock.lock()
+        _currentLabel = label
+        _currentResearchIntent = researchIntent?.rawValue ?? ResearchIntent.baselineMapping(forGestureLabel: label)?.rawValue
+        stateLock.unlock()
+        print("[DatasetRecorder] Ground-Truth Label => [\(label)] (ResearchIntent: \(_currentResearchIntent ?? "nil"))")
     }
 
-    /// When true (guided session running) manual hotkeys are ignored so they can't corrupt schedule labels.
-    var labelsLocked: Bool = false
+    public func setResearchIntent(_ intent: ResearchIntent) {
+        stateLock.lock()
+        _currentResearchIntent = intent.rawValue
+        stateLock.unlock()
+    }
 
-    func setLabelFromKey(_ keyChar: Character) -> Bool {
+    public func setLabelFromKey(_ keyChar: Character) -> Bool {
         guard !labelsLocked else { return false }
         let labelMap: [Character: String] = [
             "0": "idle",
@@ -307,14 +425,27 @@ final class DatasetRecorder {
         return false
     }
 
-    func stopRecording() {
+    public func stopRecording() {
+        stateLock.lock()
+        guard _isRecording else {
+            stateLock.unlock()
+            return
+        }
+        _isRecording = false
+        stateLock.unlock()
+
+        // Wait for all queued frames to be written to file before closing
         queue.sync {
-            guard isRecording else { return }
-            isRecording = false
-            try? fileHandle?.synchronize()
-            try? fileHandle?.close()
-            fileHandle = nil
-            print("[DatasetRecorder] Recording STOPPED. Recorded \(recordedFrameCount) frames to \(outputPath)")
+            self.stateLock.lock()
+            let handle = self.fileHandle
+            self.fileHandle = nil
+            let totalCount = self._recordedFrameCount
+            let path = self._outputPath
+            self.stateLock.unlock()
+
+            try? handle?.synchronize()
+            try? handle?.close()
+            print("[DatasetRecorder] Recording STOPPED. Recorded \(totalCount) frames to \(path)")
         }
     }
 
@@ -325,9 +456,24 @@ final class DatasetRecorder {
         secondary: HandLandmarks?,
         predictedIntent: String,
         firedIntent: String = "",
-        firedAction: String = ""
+        firedAction: String = "",
+        shadowPosture: String? = nil,
+        shadowAgrees: Bool? = nil,
+        customDesktopContext: DesktopContextRecord? = nil,
+        customResearchIntent: String? = nil
     ) {
-        guard isRecording, let handle = fileHandle else { return }
+        stateLock.lock()
+        guard _isRecording else {
+            stateLock.unlock()
+            return
+        }
+        let currentGt = _currentLabel
+        let currentIntent = customResearchIntent ?? _currentResearchIntent
+        let provider = self.contextProvider
+        stateLock.unlock()
+
+        // Non-blocking context acquisition
+        let context = customDesktopContext ?? provider.currentContext()
 
         let record = makeFrameRecord(
             frameIndex: frameIndex,
@@ -337,11 +483,22 @@ final class DatasetRecorder {
             predictedIntent: predictedIntent,
             firedIntent: firedIntent,
             firedAction: firedAction,
-            groundTruth: currentLabel
+            groundTruth: currentGt,
+            shadowPosture: shadowPosture,
+            shadowAgrees: shadowAgrees,
+            desktopContext: context,
+            researchIntent: currentIntent
         )
 
         queue.async { [weak self] in
-            guard let self = self, self.isRecording else { return }
+            guard let self = self else { return }
+            self.stateLock.lock()
+            guard let handle = self.fileHandle else {
+                self.stateLock.unlock()
+                return
+            }
+            self.stateLock.unlock()
+
             do {
                 let encoder = JSONEncoder()
                 let data = try encoder.encode(record)
@@ -349,7 +506,9 @@ final class DatasetRecorder {
                 if let newline = "\n".data(using: .utf8) {
                     handle.write(newline)
                 }
-                self.recordedFrameCount += 1
+                self.stateLock.lock()
+                self._recordedFrameCount += 1
+                self.stateLock.unlock()
             } catch {
                 print("[DatasetRecorder] Error encoding frame: \(error)")
             }

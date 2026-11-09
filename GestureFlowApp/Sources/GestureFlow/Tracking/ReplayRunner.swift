@@ -232,7 +232,11 @@ final class ReplayRunner {
                     faceBBox: record.faceBBox,
                     isInInteractionRange: primaryLandmarks?.isInInteractionRange ?? record.isInInteractionRange,
                     handCentroid: primaryLandmarks != nil ? LandmarkPointRecord(x: Double(primaryLandmarks!.handCentroid.x), y: Double(primaryLandmarks!.handCentroid.y)) : record.handCentroid,
-                    tiltAngleDegrees: primaryLandmarks?.tiltAngleDegrees ?? record.tiltAngleDegrees
+                    tiltAngleDegrees: primaryLandmarks?.tiltAngleDegrees ?? record.tiltAngleDegrees,
+                    shadowPosture: record.shadowPosture,
+                    shadowAgrees: record.shadowAgrees,
+                    desktopContext: record.desktopContext,
+                    researchIntent: record.researchIntent
                 )
 
                 if let encoded = try? encoder.encode(outRecord),
