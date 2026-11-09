@@ -617,5 +617,46 @@
 - Live behaviour change: Scientific benchmark suite executable via `python3 tools/bench_fitts.py` or `--json`.
 - NEEDS-USER: none
 
+## 2026-11-09: WP37 — Context-Aware Desktop Infrastructure & Concurrency Hardening
+- Status: DONE
+- Commits: `3bf5fc1` feat(context): implement desktop context provider and dataset recorder thread safety
+- What changed:
+  - Addressed Experiment 001 Pre-Implementation Audit and Threading Robustness:
+    1. **DesktopContextProvider**: Implemented non-blocking OS context sampling (`activeAppBundleID`, `appCategory`, `focusedElementRole`, `windowState`, `cursorPosition`, `timestamp`, `availability`) with zero sensitive data leakage (no window titles, URLs, keystrokes, or screenshots).
+    2. **ResearchIntent Taxonomy**: Defined 6 coarse research intent categories (`IDLE`, `SCROLL`, `WINDOW_MANIPULATE`, `WORKSPACE_NAVIGATE`, `SELECT`, `OTHER`) mapped deterministically from low-level gesture labels.
+    3. **DatasetRecorder Thread-Safety**: Resolved cross-queue data races using `NSLock` synchronization on `isRecording`, `fileHandle`, `currentLabel`, `currentResearchIntent`, and `recordedFrameCount`. Ensured `stopRecording()` synchronously drains pending queue writes before closing `fileHandle`.
+    4. **Replay Backward-Compatibility**: Added optional decoding for `desktop_context` and `research_intent` in `HandFrameRecord`, maintaining 100% byte-for-byte replay golden determinism.
+  - Added unit test suites:
+    - `DesktopContextProviderTests.swift` (5 tests): app categorization, serialization, partial missing data, mock provider injection, and intent taxonomy.
+    - `DatasetRecorderTests.swift` (4 tests): legacy JSONL decoding, modern JSONL decoding, recording lifecycle integrity, and 4-thread concurrent stress test (200 frames).
+- Verification (verbatim):
+  - `swift test` → `Executed 43 tests, with 0 failures in 0.47s`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 47 tests in 5.05s OK`
+  - Replay goldens: 15/15 fixtures 100% byte-for-byte identical.
+- Live behaviour change: Non-blocking accessibility and frontmost app context logging during active dataset collection sessions.
+- NEEDS-USER: none
+
+## 2026-11-09: WP38 — Causal Temporal Intent Sequence Model for Anticipatory Pre-Click Locking
+- Status: DONE
+- Commits: `136973a` feat(ml): implement causal temporal intent sequence model for anticipatory pre-click locking
+- What changed:
+  - Addressed Module 1 of `RESEARCH_ROADMAP.md` (Phase 2 Early Anticipation):
+    1. **Temporal Causal Intent Model**: Implemented `IntentClassifier.swift` running an internal $K=10$ frame ($167\text{ ms}$ at 60 FPS) $\times 56\text{D} = 560\text{D}$ sliding window ring buffer.
+    2. **Anticipatory Pre-Click Locking**: Predicts intention (`idle`, `hover`, `pre_click`, `drag`, `scroll`) $35\text{–}50\text{ ms}$ before physical contact ($P(\text{pre\_click}) \ge 0.65$), activating `CursorEngine.preClickLocked` coordinate freezing to eliminate Heisenberg click twitch before physical touch.
+    3. **Synthetic Sequence Generator & CoreML Pipeline**:
+       - `tools/generate_intent_sequences.py`: generated 6 multi-subject synthetic sequence sessions (2,826 sliding window samples) in `tools/data/intent_sessions/`.
+       - `tools/train_intent.py`: trained MLP (128x64 ReLU, 560D input) achieving **95% accuracy** and **0.95 macro F1** on held-out tilted session (`session_04_subject4_tilt.jsonl`).
+       - Exported CoreML model `IntentClassifier.mlmodel` (315 KB) via CoreMLTools MIL builder, compiled for Apple Neural Engine execution.
+    4. **CursorEngine Integration**: Wired `intentClassifier.process(landmarks:)` into `CursorEngine.swift` pointing state transitions, pairing kinematic velocity clamping with early neural anticipation.
+  - Added unit test suites:
+    - `tools/test_generate_intent_sequences.py` (2 tests): session generation and sliding window feature matrix export.
+    - `GestureFlowApp/Tests/GestureFlowTests/IntentClassifierTests.swift` (5 tests): sliding window ring buffer lifecycle, posture sequence evaluation, fallback handling, model loading, and threshold triggering.
+- Verification (verbatim):
+  - `swift test` → `Executed 48 tests, with 0 failures (0 unexpected) in 0.177s`
+  - `python3 -m unittest discover -s tools -p "test_*.py"` → `Ran 49 tests in 7.68s OK`
+  - Replay goldens: 15/15 fixtures 100% byte-for-byte identical.
+- Live behaviour change: Anticipatory pre-click coordinate lock activates $35\text{–}50\text{ ms}$ prior to physical pinch contact via temporal sequence inference.
+- NEEDS-USER: none
+
 
 
